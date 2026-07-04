@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+
+{% block title %}Transactions | LedgerLens{% endblock %}
+
+{% block content %}
+<section class="panel" data-fade-in>
+    <div class="panel-head gap-4">
+        <h1 class="panel-title">Transactions</h1>
+        <input id="transaction-filter" type="search" placeholder="Filter description, category, or flag" class="search-input" aria-label="Filter transactions">
+    </div>
+    <div class="flex justify-end mb-3">
+        <button type="button" id="toggle-all-paypal-descriptions" class="pill-link" data-show-paypal="false">
+            Show all PayPal descriptions
+        </button>
+    </div>
+
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm" id="transactions-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Origin</th>
+                    <th>Merchant</th>
+                    <th>Category</th>
+                    <th>Flag</th>
+                    <th class="text-right">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for txn in transactions %}
+                {% set alt_desc = None %}
+                {% if txn.notes and 'Alt Description:' in txn.notes %}
+                    {% set alt_desc = txn.notes.split('Alt Description:')[1].split('|')[0].strip() %}
+                {% endif %}
+                <tr>
+                    <td>{{ txn.posted_date }}</td>
+                    <td>
+                        <div class="desc-cell" data-description-wrapper data-has-alt="{{ 'true' if alt_desc else 'false' }}" data-show-paypal="false">
+                            <span class="desc-main" data-bank-description>{{ txn.cleaned_description }}</span>
+                            {% if alt_desc %}
+                                <span class="desc-main hidden" data-paypal-description>{{ alt_desc }}</span>
+                                <span class="desc-badge" data-desc-badge>Alt available</span>
+                                <button type="button" class="pill-link ml-2" data-desc-toggle>Show PayPal</button>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td>{{ txn.notes if txn.notes else '-' }}</td>
+                    <td>{{ txn.merchant.name if txn.merchant else 'N/A' }}</td>
+                    <td>{{ txn.category.name if txn.category else 'Uncategorized' }}</td>
+                    <td>{{ txn.household_flag }}</td>
+                    <td class="text-right">{{ '%.2f'|format(txn.amount) }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="text-center py-10 text-slate-500">No transactions available.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

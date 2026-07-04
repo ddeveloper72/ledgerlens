@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}LedgerLens{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body class="app-bg text-slate-900 min-h-screen">
+    <header class="glass sticky top-0 z-20 border-b border-white/30">
+        <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+            <a href="{{ url_for('main.dashboard') }}" class="brand tracking-tight">LedgerLens</a>
+            <nav class="flex items-center gap-4 text-sm font-medium">
+                <a href="{{ url_for('main.dashboard') }}" class="nav-link">Dashboard</a>
+                <a href="{{ url_for('main.transactions') }}" class="nav-link">Transactions</a>
+                <a href="{{ url_for('main.imports') }}" class="nav-link">Imports</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 py-8">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="space-y-2 mb-6" data-flash-container>
+                    {% for category, message in messages %}
+                        <div class="flash-card {{ 'flash-success' if category == 'success' else 'flash-error' }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
+</body>
+</html>

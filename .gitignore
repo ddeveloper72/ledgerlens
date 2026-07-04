@@ -1,0 +1,25 @@
+
+.env
+.venv/
+__pycache__/
+*.pyc
+instance/
+*.sqlite
+*.sqlite3
+*.db
+.DS_Store
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Keep local editor tooling out of repo commits.
+.vscode/
+
+# Ignore local statement uploads and transient data artifacts.
+uploads/
+statements/
+tmp/
+temp/
+*.csv
+*.pdf
+*.jsonl

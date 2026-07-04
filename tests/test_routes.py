@@ -1,0 +1,105 @@
+from datetime import date
+from decimal import Decimal
+
+from app.extensions import db
+from app.models import Account, ImportBatch, StatementImport, Transaction, User
+
+
+def test_transactions_view_hides_standalone_paypal_rows(client, app):
+    with app.app_context():
+        user = User(name="Route User")
+        db.session.add(user)
+        db.session.flush()
+
+        account = Account(user_id=user.id, name="Primary", account_type="checking")
+        db.session.add(account)
+        db.session.flush()
+
+        bank_row = Transaction(
+            account_id=account.id,
+            posted_date=date(2026, 6, 29),
+            original_description="D/D PayPal Europe DD-REF-001",
+            cleaned_description="D/D PayPal Europe DD-REF-001",
+            amount=Decimal("-17.99"),
+            household_flag="unknown",
+            notes="Type: Direct Debit",
+            review_state="pending",
+        )
+        paypal_dump_row = Transaction(
+            account_id=account.id,
+            posted_date=date(2026, 6, 29),
+            original_description="PayPal Sample Vendor",
+            cleaned_description="PayPal Sample Vendor | PreApproved Payment Bill User Payment",
+            amount=Decimal("-17.99"),
+            household_flag="unknown",
+            notes="Status: Completed | Txn ID: TXN-1001",
+            review_state="pending",
+        )
+        db.session.add(bank_row)
+        db.session.add(paypal_dump_row)
+        db.session.commit()
+
+    response = client.get("/transactions")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "D/D PayPal Europe DD-REF-001" in body
+    assert "PayPal Sample Vendor | PreApproved Payment Bill User Payment" not in body
+
+
+def test_imports_view_paginates_history_rows(client, app):
+    with app.app_context():
+        for index in range(1, 8):
+            db.session.add(ImportBatch(source_filename=f"batch-{index}.csv", row_count=index))
+        db.session.commit()
+
+    page_one = client.get("/imports?import_page=1")
+    body_one = page_one.get_data(as_text=True)
+
+    assert page_one.status_code == 200
+    assert "Most recent import" in body_one
+    assert "Batch #7" in body_one
+    assert "Batch #6: batch-6.csv" in body_one
+    assert "Batch #2: batch-2.csv" in body_one
+    assert "Batch #1: batch-1.csv" not in body_one
+    assert "Page 1 of 2" in body_one
+
+    page_two = client.get("/imports?import_page=2")
+    body_two = page_two.get_data(as_text=True)
+
+    assert page_two.status_code == 200
+    assert "Batch #1: batch-1.csv" in body_two
+    assert "Batch #6: batch-6.csv" not in body_two
+    assert "Page 2 of 2" in body_two
+
+
+def test_update_import_account_key_route(client, app):
+    with app.app_context():
+        batch = ImportBatch(source_filename="download.csv", row_count=5)
+        db.session.add(batch)
+        db.session.flush()
+        batch_id = batch.id
+        db.session.add(
+            StatementImport(
+                import_batch_id=batch_id,
+                fingerprint="f" * 64,
+                declared_source="paypal",
+                detected_source="paypal",
+                account_key=None,
+            )
+        )
+        db.session.commit()
+
+    response = client.post(
+        "/imports/update-account-key",
+        data={"batch_id": batch_id, "account_key": "paypal-main-1", "import_page": 1},
+        follow_redirects=True,
+    )
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Account key updated for Batch" in body
+
+    with app.app_context():
+        updated = StatementImport.query.filter_by(import_batch_id=batch_id).first()
+        assert updated.account_key == "paypal-main-1"

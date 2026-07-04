@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard | LedgerLens{% endblock %}
+
+{% block content %}
+<section class="grid gap-4 md:grid-cols-3 mb-8" data-stagger>
+    <article class="metric-card">
+        <p class="metric-label">Transactions</p>
+        <p class="metric-value">{{ total_transactions }}</p>
+    </article>
+    <article class="metric-card">
+        <p class="metric-label">Pending Review</p>
+        <p class="metric-value">{{ pending_transactions }}</p>
+    </article>
+    <article class="metric-card">
+        <p class="metric-label">Total Amount</p>
+        <p class="metric-value">{{ '%.2f'|format(total_spend) }}</p>
+    </article>
+</section>
+
+<section class="panel" data-fade-in>
+    <div class="panel-head">
+        <h1 class="panel-title">Recent Transactions</h1>
+        <a href="{{ url_for('main.transactions') }}" class="pill-link">See all</a>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Category</th>
+                    <th class="text-right">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for txn in recent_transactions %}
+                <tr>
+                    <td>{{ txn.posted_date }}</td>
+                    <td>{{ txn.cleaned_description }}</td>
+                    <td>{{ txn.category.name if txn.category else 'Uncategorized' }}</td>
+                    <td class="text-right">{{ '%.2f'|format(txn.amount) }}</td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="4" class="text-center py-10 text-slate-500">No transactions yet. Upload a CSV to begin.</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

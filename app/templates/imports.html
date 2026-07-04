@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+
+{% block title %}Imports | LedgerLens{% endblock %}
+
+{% block content %}
+<section class="grid gap-6 md:grid-cols-5" data-stagger>
+    <article class="panel md:col-span-3">
+        <h1 class="panel-title mb-2">Import Transactions</h1>
+        <p class="text-sm text-slate-600 mb-4">Use this framework for each upload: choose statement type, upload file, then review Source, Account Key, and Statement Period in Import Summary.</p>
+        <ol class="text-sm text-slate-700 mb-6 list-decimal pl-5 space-y-1">
+            <li>Select source type (AIB, PayPal, Credit Union, or Auto Detect).</li>
+            <li>Upload one statement file only (CSV or PDF).</li>
+            <li>Confirm statement period and account key before processing another file.</li>
+        </ol>
+
+        <form action="{{ url_for('main.imports') }}" method="post" enctype="multipart/form-data" class="space-y-4">
+            <label for="statement_type" class="block text-sm font-semibold text-slate-700">Statement Type</label>
+            <select id="statement_type" name="statement_type" class="file-input" required>
+                {% for key, label in statement_type_options %}
+                    <option value="{{ key }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+
+            <label for="statement_account_key" class="block text-sm font-semibold text-slate-700">Account Key (optional)</label>
+            <input id="statement_account_key" name="statement_account_key" type="text" class="file-input" placeholder="Required for PayPal/Credit Union if not detected">
+
+            <label for="csv_file" class="block text-sm font-semibold text-slate-700">Statement File (CSV or PDF)</label>
+            <input id="csv_file" name="csv_file" type="file" accept=".csv,.pdf" class="file-input" required>
+            <button type="submit" class="primary-btn">Upload and Process</button>
+        </form>
+    </article>
+
+    <aside class="panel md:col-span-2">
+        <h2 class="panel-title mb-4">Import Summary</h2>
+
+        {% if latest_import %}
+            {% set last_batch = latest_import %}
+            {% set meta = latest_import.statement_import %}
+            <div class="summary-row mb-3">
+                <span>Most recent import</span>
+                <span>Batch #{{ last_batch.id }}</span>
+            </div>
+            <div class="text-sm text-slate-700 mb-4">
+                <p><strong>File:</strong> {{ last_batch.source_filename }}</p>
+                <p><strong>Imported:</strong> {{ last_batch.imported_at.strftime('%Y-%m-%d %H:%M') }}</p>
+                <p><strong>Declared Source:</strong> {{ meta.declared_source if meta else 'unknown' }}</p>
+                <p><strong>Detected Source:</strong> {{ meta.detected_source if meta else 'unknown' }}</p>
+                <p><strong>Account Key:</strong> {{ meta.account_key if meta and meta.account_key else 'n/a' }}</p>
+                {% if meta and not meta.account_key and meta.declared_source in source_needs_account_key %}
+                    <form action="{{ url_for('main.update_import_account_key') }}" method="post" class="mt-2 flex gap-2">
+                        <input type="hidden" name="batch_id" value="{{ last_batch.id }}">
+                        <input type="hidden" name="import_page" value="{{ import_page }}">
+                        <input type="text" name="account_key" class="file-input" placeholder="Enter account key" required>
+                        <button type="submit" class="primary-btn">Save</button>
+                    </form>
+                {% endif %}
+                <p><strong>Statement Period:</strong>
+                    {% if meta and meta.statement_start_date and meta.statement_end_date %}
+                        {{ meta.statement_start_date }} to {{ meta.statement_end_date }}
+                    {% else %}
+                        n/a
+                    {% endif %}
+                </p>
+                <p><strong>Rows:</strong> {{ last_batch.row_count }}</p>
+            </div>
+        {% endif %}
+
+        <h3 class="text-sm font-semibold text-slate-700 mb-2">Recent history (last 5)</h3>
+        <ul class="space-y-2 text-sm">
+            {% for batch in import_history %}
+                {% set meta = batch.statement_import %}
+                <li class="summary-row">
+                    <span>
+                        Batch #{{ batch.id }}: {{ batch.source_filename }}
+                        <br>
+                        <span class="text-xs text-slate-600">
+                            {{ meta.declared_source if meta else 'unknown' }}
+                            | {{ meta.account_key if meta and meta.account_key else 'n/a' }}
+                            | {% if meta and meta.statement_start_date and meta.statement_end_date %}{{ meta.statement_start_date }} to {{ meta.statement_end_date }}{% else %}period n/a{% endif %}
+                        </span>
+                        {% if meta and not meta.account_key and meta.declared_source in source_needs_account_key %}
+                            <form action="{{ url_for('main.update_import_account_key') }}" method="post" class="mt-2 flex gap-2">
+                                <input type="hidden" name="batch_id" value="{{ batch.id }}">
+                                <input type="hidden" name="import_page" value="{{ import_page }}">
+                                <input type="text" name="account_key" class="file-input" placeholder="Account key required" required>
+                                <button type="submit" class="primary-btn">Save</button>
+                            </form>
+                        {% endif %}
+                    </span>
+                    <span>{{ batch.row_count }} rows</span>
+                </li>
+            {% else %}
+                <li class="text-slate-500">No older imports yet.</li>
+            {% endfor %}
+        </ul>
+
+        {% if import_max_pages > 1 %}
+            <div class="flex items-center justify-between mt-4 text-sm">
+                <a
+                    class="pill-link {{ 'opacity-40 pointer-events-none' if import_page <= 1 else '' }}"
+                    href="{{ url_for('main.imports', import_page=import_page - 1) }}"
+                >
+                    Previous
+                </a>
+                <span class="text-slate-600">Page {{ import_page }} of {{ import_max_pages }}</span>
+                <a
+                    class="pill-link {{ 'opacity-40 pointer-events-none' if import_page >= import_max_pages else '' }}"
+                    href="{{ url_for('main.imports', import_page=import_page + 1) }}"
+                >
+                    Next
+                </a>
+            </div>
+        {% endif %}
+    </aside>
+</section>
+{% endblock %}

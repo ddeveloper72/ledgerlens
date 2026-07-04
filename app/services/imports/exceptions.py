@@ -1,0 +1,2 @@
+class CSVImportError(ValueError):
+    pass
