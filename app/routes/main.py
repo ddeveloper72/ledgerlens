@@ -76,7 +76,7 @@ def get_or_create_default_account():
 def imports():
     statement_type_options = [
         ("auto", DOCUMENT_TYPE_LABELS["auto"]),
-        ("aib_bank", DOCUMENT_TYPE_LABELS["aib_bank"]),
+        ("bank", DOCUMENT_TYPE_LABELS["bank"]),
         ("paypal", DOCUMENT_TYPE_LABELS["paypal"]),
         ("credit_union", DOCUMENT_TYPE_LABELS["credit_union"]),
     ]
@@ -84,6 +84,7 @@ def imports():
     if request.method == "POST":
         csv_file = request.files.get("csv_file")
         statement_type = request.form.get("statement_type", "auto")
+        statement_bank_name = request.form.get("statement_bank_name", "").strip()
         statement_account_key = request.form.get("statement_account_key", "").strip()
         if not csv_file or not csv_file.filename:
             flash("Please choose a CSV or PDF statement file.", "error")
@@ -97,6 +98,7 @@ def imports():
                 account.id,
                 declared_source=statement_type,
                 manual_account_key=statement_account_key,
+                manual_bank_name=statement_bank_name,
             )
             reconciled_count = result.get("reconciled", 0)
             unmatched_paypal = result.get("paypal_unmatched", 0)

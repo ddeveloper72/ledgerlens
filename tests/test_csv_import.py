@@ -272,7 +272,7 @@ def test_backfill_adds_alt_description_to_existing_bank_paypal_direct_debit(app)
         assert "Alt Description: Sample Vendor" in (refreshed.notes or "")
 
 
-def test_import_records_statement_metadata_for_aib_file(app):
+def test_import_records_statement_metadata_for_bank_file(app):
     with app.app_context():
         user = User(name="Metadata User")
         db.session.add(user)
@@ -291,13 +291,15 @@ def test_import_records_statement_metadata_for_aib_file(app):
         result = import_transactions(
             file_storage,
             account.id,
-            declared_source="aib_bank",
+            declared_source="bank",
             manual_account_key="sample-account-b",
+            manual_bank_name="aib",
         )
 
         meta = StatementImport.query.filter_by(import_batch_id=result["batch_id"]).first()
         assert meta is not None
-        assert meta.declared_source == "aib_bank"
+        assert meta.declared_source == "bank"
+        assert meta.bank_name == "aib"
         assert meta.account_key == "sample-account-b"
         assert str(meta.statement_start_date) == "2026-06-02"
         assert str(meta.statement_end_date) == "2026-06-30"
@@ -348,7 +350,7 @@ def test_import_requires_account_key_for_paypal_when_not_detected(app):
         assert "account key was not detected" in str(exc_info.value).lower()
 
 
-def test_amend_existing_import_metadata_assigns_default_aib_account_keys(app):
+def test_amend_existing_import_metadata_assigns_default_bank_account_keys(app):
     with app.app_context():
         first = ImportBatch(source_filename="Transaction_Export_01.06.2026_21.06.csv", row_count=1)
         second = ImportBatch(source_filename="Transaction_Export_01.06.2026_21.06 (1).csv", row_count=1)
@@ -358,13 +360,17 @@ def test_amend_existing_import_metadata_assigns_default_aib_account_keys(app):
 
         amended = amend_existing_import_metadata(
             db.session,
-            default_aib_account_keys=["sample-account-a", "sample-account-b"],
+            default_bank_account_keys=["sample-account-a", "sample-account-b"],
         )
         db.session.commit()
 
         assert amended >= 2
         first_meta = StatementImport.query.filter_by(import_batch_id=first.id).first()
         second_meta = StatementImport.query.filter_by(import_batch_id=second.id).first()
+        assert first_meta.declared_source == "bank"
+        assert second_meta.declared_source == "bank"
+        assert first_meta.bank_name == "aib"
+        assert second_meta.bank_name == "aib"
         assert first_meta.account_key == "sample-account-a"
         assert second_meta.account_key == "sample-account-b"
 

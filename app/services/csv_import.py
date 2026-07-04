@@ -166,7 +166,13 @@ def parse_csv(file_storage):
     return normalized_rows
 
 
-def import_transactions(file_storage, account_id, declared_source="auto", manual_account_key=None):
+def import_transactions(
+    file_storage,
+    account_id,
+    declared_source="auto",
+    manual_account_key=None,
+    manual_bank_name=None,
+):
     fingerprint = compute_file_fingerprint(file_storage)
     existing_import = StatementImport.query.filter_by(fingerprint=fingerprint).first()
     if existing_import:
@@ -186,7 +192,12 @@ def import_transactions(file_storage, account_id, declared_source="auto", manual
     if not rows:
         raise CSVImportError("No transactions were detected in the uploaded statement.")
 
-    metadata = build_statement_metadata(file_storage, rows, declared_source)
+    metadata = build_statement_metadata(
+        file_storage,
+        rows,
+        declared_source,
+        bank_name=manual_bank_name,
+    )
     manual_key = (manual_account_key or "").strip() or None
     if manual_key:
         metadata["account_key"] = manual_key
@@ -205,6 +216,7 @@ def import_transactions(file_storage, account_id, declared_source="auto", manual
         fingerprint=fingerprint,
         declared_source=metadata["declared_source"],
         detected_source=metadata["detected_source"],
+        bank_name=metadata.get("bank_name"),
         account_key=metadata["account_key"],
         statement_start_date=metadata["statement_start_date"],
         statement_end_date=metadata["statement_end_date"],
@@ -271,5 +283,6 @@ def import_transactions(file_storage, account_id, declared_source="auto", manual
         "statement_to": metadata["statement_end_date"],
         "declared_source": metadata["declared_source"],
         "detected_source": metadata["detected_source"],
+        "bank_name": metadata.get("bank_name"),
         "account_key": metadata["account_key"],
     }

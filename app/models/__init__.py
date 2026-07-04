@@ -57,6 +57,7 @@ class StatementImport(db.Model):
     fingerprint = db.Column(db.String(64), nullable=False, unique=True)
     declared_source = db.Column(db.String(40), nullable=False, default="auto")
     detected_source = db.Column(db.String(40), nullable=False, default="generic")
+    bank_name = db.Column(db.String(40), nullable=True)
     account_key = db.Column(db.String(64), nullable=True)
     statement_start_date = db.Column(db.Date, nullable=True)
     statement_end_date = db.Column(db.Date, nullable=True)

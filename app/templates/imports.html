@@ -8,7 +8,7 @@
         <h1 class="panel-title mb-2">Import Transactions</h1>
         <p class="text-sm text-slate-600 mb-4">Use this framework for each upload: choose statement type, upload file, then review Source, Account Key, and Statement Period in Import Summary.</p>
         <ol class="text-sm text-slate-700 mb-6 list-decimal pl-5 space-y-1">
-            <li>Select source type (AIB, PayPal, Credit Union, or Auto Detect).</li>
+            <li>Select source type (Bank, PayPal, Credit Union, or Auto Detect).</li>
             <li>Upload one statement file only (CSV or PDF).</li>
             <li>Confirm statement period and account key before processing another file.</li>
         </ol>
@@ -20,6 +20,9 @@
                     <option value="{{ key }}">{{ label }}</option>
                 {% endfor %}
             </select>
+
+            <label for="statement_bank_name" class="block text-sm font-semibold text-slate-700">Bank Name (optional)</label>
+            <input id="statement_bank_name" name="statement_bank_name" type="text" class="file-input" placeholder="Example: aib, revolut, boi">
 
             <label for="statement_account_key" class="block text-sm font-semibold text-slate-700">Account Key (optional)</label>
             <input id="statement_account_key" name="statement_account_key" type="text" class="file-input" placeholder="Required for PayPal/Credit Union if not detected">
@@ -45,6 +48,7 @@
                 <p><strong>Imported:</strong> {{ last_batch.imported_at.strftime('%Y-%m-%d %H:%M') }}</p>
                 <p><strong>Declared Source:</strong> {{ meta.declared_source if meta else 'unknown' }}</p>
                 <p><strong>Detected Source:</strong> {{ meta.detected_source if meta else 'unknown' }}</p>
+                <p><strong>Bank Name:</strong> {{ meta.bank_name if meta and meta.bank_name else 'n/a' }}</p>
                 <p><strong>Account Key:</strong> {{ meta.account_key if meta and meta.account_key else 'n/a' }}</p>
                 {% if meta and not meta.account_key and meta.declared_source in source_needs_account_key %}
                     <form action="{{ url_for('main.update_import_account_key') }}" method="post" class="mt-2 flex gap-2">
@@ -75,6 +79,7 @@
                         <br>
                         <span class="text-xs text-slate-600">
                             {{ meta.declared_source if meta else 'unknown' }}
+                            | {{ meta.bank_name if meta and meta.bank_name else 'n/a' }}
                             | {{ meta.account_key if meta and meta.account_key else 'n/a' }}
                             | {% if meta and meta.statement_start_date and meta.statement_end_date %}{{ meta.statement_start_date }} to {{ meta.statement_end_date }}{% else %}period n/a{% endif %}
                         </span>
