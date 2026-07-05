@@ -24,7 +24,18 @@ def create_app(config_class=Config):
 
     db.init_app(app)
 
-    from app.models import Account, Category, ImportBatch, Merchant, MerchantAlias, RecurringBill, SavingsGoal, StatementImport, Transaction, User  # noqa: F401
+    from app.models import (  # noqa: F401
+        Account,
+        Category,
+        ImportBatch,
+        Merchant,
+        MerchantAlias,
+        RecurringBill,
+        SavingsGoal,
+        StatementImport,
+        Transaction,
+        User,
+    )
     from app.routes.main import bp as main_bp
 
     app.register_blueprint(main_bp)
