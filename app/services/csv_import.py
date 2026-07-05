@@ -252,6 +252,7 @@ def import_transactions(
             merchant = create_or_get_merchant(db.session, row["cleaned_description"])
 
         category = assign_category(db.session, merchant.name, row["cleaned_description"])
+        category_id = None if category.name == "Uncategorized" else category.id
 
         transaction = Transaction(
             account_id=account_id,
@@ -260,7 +261,7 @@ def import_transactions(
             original_description=row["original_description"],
             cleaned_description=row["cleaned_description"],
             merchant_id=merchant.id,
-            category_id=category.id,
+            category_id=category_id,
             amount=row["amount"],
             household_flag=row["household_flag"],
             notes=row["notes"],

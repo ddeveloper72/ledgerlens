@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from app.extensions import db
-from app.models import Account, ImportBatch, StatementImport, Transaction, User
+from app.models import Account, Category, ImportBatch, StatementImport, Transaction, User
 
 
 def test_transactions_view_hides_standalone_paypal_rows(client, app):
@@ -103,3 +103,65 @@ def test_update_import_account_key_route(client, app):
     with app.app_context():
         updated = StatementImport.query.filter_by(import_batch_id=batch_id).first()
         assert updated.account_key == "paypal-main-1"
+
+
+def test_accounts_page_allows_creating_account(client, app):
+    response = client.post(
+        "/accounts",
+        data={"account_name": "Household Current", "account_type": "checking"},
+        follow_redirects=True,
+    )
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Household Current" in body
+
+    with app.app_context():
+        account = Account.query.filter_by(name="Household Current").first()
+        assert account is not None
+
+
+def test_review_queue_updates_category_flag_and_state(client, app):
+    with app.app_context():
+        user = User(name="Reviewer User")
+        db.session.add(user)
+        db.session.flush()
+
+        account = Account(user_id=user.id, name="Primary", account_type="checking")
+        db.session.add(account)
+        db.session.flush()
+
+        txn = Transaction(
+            account_id=account.id,
+            posted_date=date(2026, 7, 3),
+            original_description="Sample Grocery",
+            cleaned_description="Sample Grocery",
+            amount=Decimal("-20.00"),
+            household_flag="unknown",
+            review_state="pending",
+        )
+        db.session.add(txn)
+        db.session.commit()
+        txn_id = txn.id
+
+    response = client.post(
+        f"/reviews/{txn_id}",
+        data={
+            "category_name": "Groceries",
+            "household_flag": "household",
+            "review_state": "reviewed",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+
+    with app.app_context():
+        updated = Transaction.query.filter_by(id=txn_id).first()
+        assert updated is not None
+        assert updated.review_state == "reviewed"
+        assert updated.household_flag == "household"
+
+        category = Category.query.filter_by(id=updated.category_id).first()
+        assert category is not None
+        assert category.name == "Groceries"

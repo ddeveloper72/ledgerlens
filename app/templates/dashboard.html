@@ -5,17 +5,57 @@
 {% block content %}
 <section class="grid gap-4 md:grid-cols-3 mb-8" data-stagger>
     <article class="metric-card">
-        <p class="metric-label">Transactions</p>
-        <p class="metric-value">{{ total_transactions }}</p>
+        <p class="metric-label">Monthly Income</p>
+        <p class="metric-value">{{ '%.2f'|format(monthly_income) }}</p>
+    </article>
+    <article class="metric-card">
+        <p class="metric-label">Monthly Spending</p>
+        <p class="metric-value">{{ '%.2f'|format(monthly_spending) }}</p>
+    </article>
+    <article class="metric-card">
+        <p class="metric-label">Household Spending</p>
+        <p class="metric-value">{{ '%.2f'|format(household_spending) }}</p>
+    </article>
+    <article class="metric-card">
+        <p class="metric-label">Uncategorised Transactions</p>
+        <p class="metric-value">{{ uncategorised_transactions }}</p>
     </article>
     <article class="metric-card">
         <p class="metric-label">Pending Review</p>
         <p class="metric-value">{{ pending_transactions }}</p>
     </article>
     <article class="metric-card">
-        <p class="metric-label">Total Amount</p>
-        <p class="metric-value">{{ '%.2f'|format(total_spend) }}</p>
+        <p class="metric-label">Total Transactions</p>
+        <p class="metric-value">{{ total_transactions }}</p>
     </article>
+</section>
+
+<section class="panel mb-8" data-fade-in>
+    <div class="panel-head">
+        <h1 class="panel-title">Top Categories (Monthly Spending)</h1>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr>
+                    <th>Category</th>
+                    <th class="text-right">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for category_name, amount in top_categories %}
+                <tr>
+                    <td>{{ category_name }}</td>
+                    <td class="text-right">{{ '%.2f'|format(amount) }}</td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="2" class="text-center py-8 text-slate-500">No spending transactions this month.</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </section>
 
 <section class="panel" data-fade-in>

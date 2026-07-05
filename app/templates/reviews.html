@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+
+{% block title %}Review Queue | LedgerLens{% endblock %}
+
+{% block content %}
+<section class="panel" data-fade-in>
+    <div class="panel-head">
+        <h1 class="panel-title">Pending Review</h1>
+        <span class="text-sm text-slate-600">{{ pending_transactions|length }} transaction(s)</span>
+    </div>
+
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th class="text-right">Amount</th>
+                    <th>Category</th>
+                    <th>Flag</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for txn in pending_transactions %}
+                <tr>
+                    <td>{{ txn.posted_date }}</td>
+                    <td>{{ txn.cleaned_description }}</td>
+                    <td class="text-right">{{ '%.2f'|format(txn.amount) }}</td>
+                    <td colspan="3">
+                        <form action="{{ url_for('main.update_review', transaction_id=txn.id) }}" method="post" class="review-form-grid">
+                            <input type="text" name="category_name" class="file-input" value="{{ txn.category.name if txn.category else '' }}" placeholder="Category name">
+                            <select name="household_flag" class="file-input">
+                                {% for flag in household_flags %}
+                                    <option value="{{ flag }}" {{ 'selected' if txn.household_flag == flag else '' }}>{{ flag }}</option>
+                                {% endfor %}
+                            </select>
+                            <input type="hidden" name="review_state" value="reviewed">
+                            <button type="submit" class="primary-btn">Save & Review</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-center py-10 text-slate-500">No pending transactions. Great work.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

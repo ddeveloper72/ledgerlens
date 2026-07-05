@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+
+{% block title %}Accounts | LedgerLens{% endblock %}
+
+{% block content %}
+<section class="grid gap-6 md:grid-cols-5" data-stagger>
+    <article class="panel md:col-span-2">
+        <h1 class="panel-title mb-2">Add Account</h1>
+        <p class="text-sm text-slate-600 mb-4">Create local household accounts used for statement imports and transaction tracking.</p>
+
+        <form action="{{ url_for('main.accounts') }}" method="post" class="space-y-4">
+            <label for="account_name" class="block text-sm font-semibold text-slate-700">Account Name</label>
+            <input id="account_name" name="account_name" type="text" class="file-input" placeholder="Example: Joint Current" required>
+
+            <label for="account_type" class="block text-sm font-semibold text-slate-700">Account Type</label>
+            <select id="account_type" name="account_type" class="file-input">
+                <option value="checking">Checking</option>
+                <option value="savings">Savings</option>
+                <option value="credit">Credit</option>
+                <option value="loan">Loan</option>
+            </select>
+
+            <button type="submit" class="primary-btn">Create Account</button>
+        </form>
+    </article>
+
+    <article class="panel md:col-span-3">
+        <div class="panel-head">
+            <h2 class="panel-title">Account Overview</h2>
+            <span class="text-sm text-slate-500">{{ account_rows|length }} account(s)</span>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Transactions</th>
+                        <th class="text-right">Balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for row in account_rows %}
+                    <tr>
+                        <td>{{ row.account.name }}</td>
+                        <td>{{ row.account.account_type }}</td>
+                        <td>{{ row.transaction_count }}</td>
+                        <td class="text-right">{{ '%.2f'|format(row.balance) }}</td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="4" class="text-center py-10 text-slate-500">No accounts created yet.</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>
+{% endblock %}

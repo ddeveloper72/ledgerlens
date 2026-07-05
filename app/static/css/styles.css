@@ -159,6 +159,13 @@ table tbody td {
     padding: 0.55rem 0.65rem;
 }
 
+.review-form-grid {
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: 1.4fr 1fr auto;
+    align-items: center;
+}
+
 .desc-cell {
     display: flex;
     align-items: center;
@@ -216,5 +223,9 @@ table tbody td {
     .panel,
     .metric-card {
         border-radius: 0.9rem;
+    }
+
+    .review-form-grid {
+        grid-template-columns: 1fr;
     }
 }
