@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from app.extensions import db
-from app.models import Account, Category, ImportBatch, StatementImport, Transaction, User
+from app.models import Account, Category, ImportBatch, MerchantAlias, SavingsGoal, StatementImport, Transaction, User
 
 
 def test_transactions_view_hides_standalone_paypal_rows(client, app):
@@ -165,3 +165,41 @@ def test_review_queue_updates_category_flag_and_state(client, app):
         category = Category.query.filter_by(id=updated.category_id).first()
         assert category is not None
         assert category.name == "Groceries"
+
+
+def test_intelligence_route_saves_alias_mapping(client, app):
+    response = client.post(
+        "/intelligence",
+        data={
+            "alias_text": "PAYPAL *MICROSOFT",
+            "merchant_name": "Microsoft",
+            "category_name": "Subscriptions",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+
+    with app.app_context():
+        alias = MerchantAlias.query.filter_by(alias="microsoft").first()
+        assert alias is not None
+
+
+def test_savings_recovery_route_saves_goal(client, app):
+    response = client.post(
+        "/savings-recovery",
+        data={
+            "goal_name": "Emergency Fund",
+            "current_amount": "250.00",
+            "target_amount": "1000.00",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+
+    with app.app_context():
+        goal = SavingsGoal.query.filter_by(name="Emergency Fund").first()
+        assert goal is not None
+        assert str(goal.current_amount) == "250.00"
+        assert str(goal.target_amount) == "1000.00"

@@ -58,6 +58,88 @@
     </div>
 </section>
 
+<section class="grid gap-6 md:grid-cols-2 mb-8" data-stagger>
+    <article class="panel">
+        <div class="panel-head">
+            <h2 class="panel-title">Recurring Payments</h2>
+        </div>
+        <p class="text-sm text-slate-600 mb-3">Expected this month</p>
+        <ul class="space-y-2 text-sm mb-4">
+            {% for item in recurring_expected %}
+                <li class="summary-row">
+                    <span>{{ item.expected_day }} · {{ item.merchant_name }}</span>
+                    <span>{{ '%.2f'|format(item.expected_amount) }}</span>
+                </li>
+            {% else %}
+                <li class="text-slate-500">No recurring patterns detected yet.</li>
+            {% endfor %}
+        </ul>
+
+        <p class="text-sm text-slate-600 mb-3">Missing this month</p>
+        <ul class="space-y-2 text-sm">
+            {% for item in recurring_missing %}
+                <li class="summary-row">
+                    <span>{{ item.expected_day }} · {{ item.merchant_name }}</span>
+                    <span class="text-rose-700">Missing</span>
+                </li>
+            {% else %}
+                <li class="text-slate-500">No missing recurring payments flagged.</li>
+            {% endfor %}
+        </ul>
+    </article>
+
+    <article class="panel">
+        <div class="panel-head">
+            <h2 class="panel-title">Cash Flow Calendar</h2>
+        </div>
+        <ul class="space-y-2 text-sm">
+            {% for event in cash_calendar %}
+                <li class="summary-row">
+                    <span>{{ event.date }} · {{ event.label }}</span>
+                    <span class="{{ 'text-emerald-700' if event.flow == 'in' else 'text-rose-700' }}">{{ '%.2f'|format(event.amount) }}</span>
+                </li>
+            {% else %}
+                <li class="text-slate-500">No cash-flow events this month.</li>
+            {% endfor %}
+        </ul>
+    </article>
+</section>
+
+<section class="grid gap-6 md:grid-cols-2 mb-8" data-stagger>
+    <article class="panel">
+        <div class="panel-head">
+            <h2 class="panel-title">Household Analytics</h2>
+        </div>
+        <ul class="space-y-2 text-sm">
+            <li class="summary-row"><span>Avg monthly groceries</span><span>{{ '%.2f'|format(analytics_snapshot.avg_monthly_groceries) }}</span></li>
+            <li class="summary-row"><span>Technology subscriptions</span><span>{{ '%.2f'|format(analytics_snapshot.technology_subscriptions_yearly) }}</span></li>
+            <li class="summary-row"><span>Car costs (tracked)</span><span>{{ '%.2f'|format(analytics_snapshot.car_cost_12m) }}</span></li>
+            <li class="summary-row"><span>Pet costs (tracked)</span><span>{{ '%.2f'|format(analytics_snapshot.pet_cost_12m) }}</span></li>
+            <li class="summary-row"><span>Allowances (tracked)</span><span>{{ '%.2f'|format(analytics_snapshot.allowances_12m) }}</span></li>
+            <li class="summary-row"><span>Essential spend</span><span>{{ '%.2f'|format(analytics_snapshot.essential_spend) }}</span></li>
+            <li class="summary-row"><span>Discretionary spend</span><span>{{ '%.2f'|format(analytics_snapshot.discretionary_spend) }}</span></li>
+        </ul>
+    </article>
+
+    <article class="panel">
+        <div class="panel-head">
+            <h2 class="panel-title">Savings Recovery</h2>
+            <a href="{{ url_for('main.savings_recovery') }}" class="pill-link">Manage</a>
+        </div>
+        {% if recovery_snapshot %}
+            <ul class="space-y-2 text-sm">
+                <li class="summary-row"><span>Goal</span><span>{{ recovery_snapshot.goal_name }}</span></li>
+                <li class="summary-row"><span>Current</span><span>{{ '%.2f'|format(recovery_snapshot.current_amount) }}</span></li>
+                <li class="summary-row"><span>Target</span><span>{{ '%.2f'|format(recovery_snapshot.target_amount) }}</span></li>
+                <li class="summary-row"><span>Gap</span><span>{{ '%.2f'|format(recovery_snapshot.gap) }}</span></li>
+                <li class="summary-row"><span>Progress</span><span>{{ recovery_snapshot.progress_percent }}%</span></li>
+            </ul>
+        {% else %}
+            <p class="text-sm text-slate-500">No emergency recovery goal exists yet.</p>
+        {% endif %}
+    </article>
+</section>
+
 <section class="panel" data-fade-in>
     <div class="panel-head">
         <h1 class="panel-title">Recent Transactions</h1>

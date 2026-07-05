@@ -15,6 +15,17 @@ from app.services.csv_import import (
     backfill_paypal_alternate_descriptions,
     import_transactions,
 )
+from app.services.financial_intelligence import (
+    apply_mapping_to_pending_transactions,
+    cash_flow_calendar,
+    ensure_category,
+    ensure_merchant_with_alias,
+    household_analytics_snapshot,
+    infer_financial_labels,
+    recurring_expected_vs_missing,
+    savings_recovery_summary,
+    sync_recurring_bills,
+)
 
 bp = Blueprint("main", __name__)
 
@@ -77,6 +88,10 @@ def dashboard():
     )
 
     top_categories = sorted(category_totals.items(), key=lambda item: item[1], reverse=True)[:5]
+    recurring_snapshot = recurring_expected_vs_missing(db.session)
+    cash_calendar = cash_flow_calendar(db.session)
+    analytics_snapshot = household_analytics_snapshot(db.session)
+    recovery_snapshot = savings_recovery_summary(db.session)
     recent_transactions = (
         Transaction.query.order_by(Transaction.posted_date.desc(), Transaction.id.desc())
         .limit(8)
@@ -92,9 +107,121 @@ def dashboard():
         household_spending=household_spending,
         uncategorised_transactions=uncategorised_transactions,
         top_categories=top_categories,
+        recurring_expected=recurring_snapshot["expected"],
+        recurring_missing=recurring_snapshot["missing"],
+        cash_calendar=cash_calendar,
+        analytics_snapshot=analytics_snapshot,
+        recovery_snapshot=recovery_snapshot,
         recent_transactions=recent_transactions,
     )
 
+@bp.route("/intelligence", methods=["GET", "POST"])
+def intelligence():
+    """Manage merchant mappings and preview recurring/cash-flow intelligence outputs."""
+    if request.method == "POST":
+        alias_text = request.form.get("alias_text", "").strip()
+        merchant_name = request.form.get("merchant_name", "").strip()
+        category_name = request.form.get("category_name", "").strip() or "Uncategorized"
+        apply_existing = request.form.get("apply_existing") == "on"
+
+        if not alias_text or not merchant_name:
+            flash("Alias and merchant name are required.", "error")
+            return redirect(url_for("main.intelligence"))
+
+        merchant = ensure_merchant_with_alias(db.session, alias_text, merchant_name)
+        category = ensure_category(db.session, category_name)
+        updated_count = 0
+        if apply_existing:
+            updated_count = apply_mapping_to_pending_transactions(
+                db.session,
+                alias_text,
+                merchant.name,
+                category.name,
+            )
+
+        db.session.commit()
+        message = f"Mapping saved for alias '{alias_text}'."
+        if updated_count:
+            message += f" Updated {updated_count} pending transaction(s)."
+        flash(message, "success")
+        return redirect(url_for("main.intelligence"))
+
+    recurring_candidates = sync_recurring_bills(db.session)
+    db.session.commit()
+    recurring_snapshot = recurring_expected_vs_missing(db.session)
+    cash_calendar = cash_flow_calendar(db.session)
+
+    recent_transactions = (
+        Transaction.query.order_by(Transaction.posted_date.desc(), Transaction.id.desc())
+        .limit(20)
+        .all()
+    )
+    merchant_journey = []
+    for txn in recent_transactions:
+        merchant_name = txn.merchant.name if txn.merchant else "Unknown"
+        category_name = txn.category.name if txn.category else "Uncategorized"
+        labels = infer_financial_labels(merchant_name, category_name, txn.cleaned_description)
+        merchant_journey.append(
+            {
+                "transaction": txn,
+                "merchant_name": merchant_name,
+                "category_name": category_name,
+                "labels": labels,
+            }
+        )
+
+    return render_template(
+        "intelligence.html",
+        recurring_candidates=recurring_candidates,
+        recurring_expected=recurring_snapshot["expected"],
+        recurring_missing=recurring_snapshot["missing"],
+        cash_calendar=cash_calendar,
+        merchant_journey=merchant_journey,
+    )
+
+
+@bp.route("/savings-recovery", methods=["GET", "POST"])
+def savings_recovery():
+    """Track emergency-fund target and progress toward recovery."""
+    if request.method == "POST":
+        target_amount = request.form.get("target_amount", type=float)
+        current_amount = request.form.get("current_amount", type=float)
+        goal_name = request.form.get("goal_name", "Emergency Fund").strip() or "Emergency Fund"
+
+        if target_amount is None or current_amount is None:
+            flash("Current and target amounts are required.", "error")
+            return redirect(url_for("main.savings_recovery"))
+
+        existing = (
+            db.session.query(User).first()
+        )
+        if not existing:
+            user = User(name=os.environ.get("DEFAULT_USER_NAME", "Sample User"))
+            db.session.add(user)
+            db.session.flush()
+
+        from app.models import SavingsGoal
+
+        goal = (
+            db.session.query(SavingsGoal)
+            .filter(SavingsGoal.name.ilike("%emergency%"))
+            .first()
+        )
+        if not goal:
+            goal = SavingsGoal(name=goal_name, target_amount=Decimal("0.00"), current_amount=Decimal("0.00"))
+            db.session.add(goal)
+
+        goal.name = goal_name
+        goal.target_amount = Decimal(str(target_amount)).quantize(Decimal("0.01"))
+        goal.current_amount = Decimal(str(current_amount)).quantize(Decimal("0.01"))
+        db.session.commit()
+        flash("Savings recovery goal updated.", "success")
+        return redirect(url_for("main.savings_recovery"))
+
+    return render_template(
+        "savings_recovery.html",
+        recovery_snapshot=savings_recovery_summary(db.session),
+    )
 
 @bp.route("/accounts", methods=["GET", "POST"])
 def accounts():
