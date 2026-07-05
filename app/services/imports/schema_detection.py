@@ -60,21 +60,25 @@ DESCRIPTION_ALIASES = [
 
 
 def normalize_header(header):
+    """Normalize header text for resilient alias matching."""
     normalized = re.sub(r"[^a-z0-9]+", " ", (header or "").strip().lower())
     return " ".join(normalized.split())
 
 
 def _find_matching_headers(headers, aliases):
+    """Return all headers that match any normalized alias."""
     alias_set = {normalize_header(alias) for alias in aliases}
     return [header for header in headers if normalize_header(header) in alias_set]
 
 
 def _find_first_matching_header(headers, aliases):
+    """Return the first matching header for a given alias set."""
     matches = _find_matching_headers(headers, aliases)
     return matches[0] if matches else None
 
 
 def detect_schema(headers):
+    """Detect supported CSV schema and return canonical field mapping."""
     if not headers:
         raise CSVImportError("CSV file is empty or missing headers.")
 
@@ -129,6 +133,7 @@ def detect_schema(headers):
 
 
 def validate_csv_headers(headers):
+    """Validate headers against required amount/date/description support."""
     schema = detect_schema(headers)
     if schema["amount"]:
         return

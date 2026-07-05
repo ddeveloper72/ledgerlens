@@ -18,6 +18,7 @@ SOURCE_NEEDS_ACCOUNT_KEY = {"paypal", "credit_union"}
 
 
 def normalize_document_type(document_type):
+    """Normalize statement source key values and map legacy aliases."""
     key = (document_type or "auto").strip().lower()
     if key == "aib_bank":
         return "bank"
@@ -25,6 +26,7 @@ def normalize_document_type(document_type):
 
 
 def normalize_bank_name(bank_name):
+    """Normalize free-text bank names into canonical short keys."""
     value = (bank_name or "").strip().lower()
     aliases = {
         "aib": "aib",
@@ -38,6 +40,7 @@ def normalize_bank_name(bank_name):
 
 
 def compute_file_fingerprint(file_storage):
+    """Return SHA-256 fingerprint for uploaded file bytes."""
     file_storage.stream.seek(0)
     raw_bytes = file_storage.stream.read()
     file_storage.stream.seek(0)
@@ -45,6 +48,7 @@ def compute_file_fingerprint(file_storage):
 
 
 def read_csv_text(file_storage):
+    """Read uploaded CSV stream as UTF-8 text while preserving stream position."""
     file_storage.stream.seek(0)
     raw_bytes = file_storage.stream.read()
     file_storage.stream.seek(0)
@@ -52,6 +56,7 @@ def read_csv_text(file_storage):
 
 
 def extract_aib_account_key(file_storage):
+    """Extract account-key pattern from bank CSV account columns when present."""
     csv_text = read_csv_text(file_storage)
     text_stream = io.StringIO(csv_text)
     sample = csv_text[:4096]
@@ -88,6 +93,7 @@ def extract_aib_account_key(file_storage):
 
 
 def _map_detected_source(source):
+    """Map parser source labels into persisted metadata source keys."""
     detected = (source or "generic").strip().lower()
     if detected in {"generic", "aib_bank"}:
         return "bank"
@@ -97,6 +103,7 @@ def _map_detected_source(source):
 
 
 def build_statement_metadata(file_storage, rows, declared_source, bank_name=None):
+    """Build persisted statement metadata from import rows and file content."""
     declared_key = normalize_document_type(declared_source)
     dates = sorted({row["posted_date"] for row in rows if row.get("posted_date")})
     statement_start = dates[0] if dates else None
@@ -124,6 +131,7 @@ def build_statement_metadata(file_storage, rows, declared_source, bank_name=None
 
 
 def _infer_legacy_source_from_filename(filename):
+    """Infer source type for legacy batches using filename conventions."""
     lower_name = (filename or "").lower()
     if lower_name.endswith(".pdf"):
         return "credit_union"
@@ -135,6 +143,7 @@ def _infer_legacy_source_from_filename(filename):
 
 
 def _infer_legacy_bank_name_from_filename(filename):
+    """Infer bank name for legacy batch metadata from filename hints."""
     lower_name = (filename or "").lower()
     if "transaction_export" in lower_name:
         return "aib"
@@ -142,11 +151,13 @@ def _infer_legacy_bank_name_from_filename(filename):
 
 
 def _legacy_fingerprint_for_batch(batch):
+    """Create deterministic metadata fingerprint for pre-fingerprint legacy batches."""
     text = f"legacy-batch-{batch.id}-{batch.source_filename}-{batch.imported_at}"
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def amend_existing_import_metadata(session, default_bank_account_keys=None):
+    """Backfill and normalize StatementImport metadata for legacy imports."""
     default_bank_account_keys = default_bank_account_keys or []
     batches = ImportBatch.query.order_by(ImportBatch.id.asc()).all()
     amended_count = 0

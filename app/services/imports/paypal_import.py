@@ -6,6 +6,7 @@ from app.services.imports.normalization import clean_description, derive_amount,
 
 
 def _build_paypal_description(row, schema):
+    """Build user-facing merchant description from PayPal row fields."""
     counterparty = row.get(schema["counterparty"], "").strip() if schema["counterparty"] else ""
     item_title = row.get(schema["item_title"], "").strip() if schema["item_title"] else ""
 
@@ -19,6 +20,7 @@ def _build_paypal_description(row, schema):
 
 
 def _build_paypal_bank_description(row, schema):
+    """Build bank-style cleaned description from PayPal transaction type."""
     transaction_type = row.get(schema["transaction_type"], "").strip() if schema["transaction_type"] else ""
     lowered_type = transaction_type.lower()
 
@@ -35,16 +37,19 @@ def _build_paypal_bank_description(row, schema):
 
 
 def _paypal_type_lower(row, schema):
+    """Return lowercase PayPal transaction type for rule matching."""
     if not schema["transaction_type"]:
         return ""
     return row.get(schema["transaction_type"], "").strip().lower()
 
 
 def _is_paypal_currency_conversion(row, schema):
+    """Check whether a PayPal row represents a currency conversion entry."""
     return "currency conversion" in _paypal_type_lower(row, schema)
 
 
 def _is_paypal_payment_row(row, schema):
+    """Identify PayPal rows that represent ledger-relevant payment activity."""
     type_lower = _paypal_type_lower(row, schema)
     include_markers = ["payment", "checkout", "bill user payment"]
     exclude_markers = [
@@ -75,6 +80,7 @@ def _is_paypal_payment_row(row, schema):
 
 
 def should_import_paypal_row(row, schema):
+    """Filter PayPal rows to completed payment rows only."""
     status = row.get(schema["status"], "").strip().lower() if schema["status"] else ""
     if status and status != "completed":
         return False
@@ -83,6 +89,7 @@ def should_import_paypal_row(row, schema):
 
 
 def find_paypal_fx_settlement_amount(payment_row, raw_rows, schema, payment_amount):
+    """Find matching FX conversion amount that maps a payment to bank-settled value."""
     if not schema["time"]:
         return None
 
@@ -127,6 +134,7 @@ def find_paypal_fx_settlement_amount(payment_row, raw_rows, schema, payment_amou
 
 
 def build_paypal_notes(row, schema):
+    """Build normalized notes string from PayPal metadata columns."""
     raw_note = row.get(schema["notes"], "").strip() if schema["notes"] else ""
     status = row.get(schema["status"], "").strip() if schema["status"] else ""
     transaction_id = row.get(schema["transaction_id"], "").strip() if schema["transaction_id"] else ""
@@ -156,6 +164,7 @@ def build_paypal_notes(row, schema):
 
 
 def _extract_alt_description_from_paypal_row(description):
+    """Extract alternate merchant description from PayPal-style text."""
     if not description:
         return None
 
@@ -169,6 +178,7 @@ def _extract_alt_description_from_paypal_row(description):
 
 
 def _remove_alt_description_metadata(notes):
+    """Remove alternate-description metadata fragments from notes."""
     if not notes:
         return notes
 
@@ -183,6 +193,7 @@ def _remove_alt_description_metadata(notes):
 
 
 def _extract_alt_description_from_notes(notes):
+    """Read the first alternate-description metadata segment from notes."""
     if not notes:
         return None
 
@@ -193,6 +204,7 @@ def _extract_alt_description_from_notes(notes):
 
 
 def _is_low_signal_alt_description(alt_description):
+    """Flag low-value alternate descriptions that should not be surfaced."""
     if not alt_description:
         return True
 
@@ -202,6 +214,7 @@ def _is_low_signal_alt_description(alt_description):
 
 
 def _find_paypal_reconciliation_candidate(session, account_id, posted_date, amount):
+    """Find likely bank transaction candidate for PayPal reconciliation."""
     start_date = posted_date - timedelta(days=5)
     end_date = posted_date + timedelta(days=5)
 
@@ -235,6 +248,7 @@ def _find_paypal_reconciliation_candidate(session, account_id, posted_date, amou
 
 
 def _find_historical_paypal_source_rows(session, account_id, posted_date, amount):
+    """Locate historical PayPal source rows for alternate-description backfill."""
     start_date = posted_date - timedelta(days=5)
     end_date = posted_date + timedelta(days=5)
 
@@ -301,6 +315,7 @@ def _find_historical_paypal_source_rows(session, account_id, posted_date, amount
 
 
 def _merge_notes(existing_notes, extra_note):
+    """Append note fragments while avoiding duplicates and empty values."""
     if not extra_note:
         return existing_notes
 
@@ -314,6 +329,7 @@ def _merge_notes(existing_notes, extra_note):
 
 
 def backfill_paypal_alternate_descriptions(session, account_id=None):
+    """Backfill PayPal alternate descriptions onto matching bank direct-debit rows."""
     bank_rows_query = session.query(Transaction)
     if account_id is not None:
         bank_rows_query = bank_rows_query.filter(Transaction.account_id == account_id)
@@ -365,6 +381,7 @@ def backfill_paypal_alternate_descriptions(session, account_id=None):
 
 
 def reconcile_paypal_to_bank_transaction(session, account_id, row):
+    """Enrich a matching bank transaction with metadata from a PayPal import row."""
     candidate = _find_paypal_reconciliation_candidate(
         session, account_id, row["posted_date"], row["amount"]
     )

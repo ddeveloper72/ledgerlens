@@ -9,6 +9,7 @@ from app.extensions import db
 
 
 def create_app(config_class=Config):
+    """Build and configure the Flask application instance."""
     load_dotenv()
 
     app = Flask(__name__, instance_relative_config=True)
@@ -54,6 +55,7 @@ def create_app(config_class=Config):
 
 
 def _apply_runtime_statement_import_updates():
+    """Apply lightweight SQLite schema/data updates for StatementImport compatibility."""
     inspector = inspect(db.engine)
     table_names = set(inspector.get_table_names())
     if "statement_import" not in table_names:

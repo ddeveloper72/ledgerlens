@@ -22,6 +22,7 @@ HOUSEHOLD_FLAGS = ["household", "personal", "shared", "reimbursable", "unknown"]
 
 
 def _month_bounds(today=None):
+    """Return the current month start and next-month start date boundaries."""
     today = today or date.today()
     month_start = today.replace(day=1)
     if month_start.month == 12:
@@ -33,6 +34,7 @@ def _month_bounds(today=None):
 
 @bp.route("/")
 def dashboard():
+    """Render dashboard totals, top categories, and recent transactions."""
     total_transactions = Transaction.query.count()
     pending_transactions = Transaction.query.filter_by(review_state="pending").count()
     month_start, next_month_start = _month_bounds()
@@ -96,6 +98,7 @@ def dashboard():
 
 @bp.route("/accounts", methods=["GET", "POST"])
 def accounts():
+    """Create and list local accounts used for transaction imports."""
     if request.method == "POST":
         account_name = request.form.get("account_name", "").strip()
         account_type = request.form.get("account_type", "checking").strip().lower() or "checking"
@@ -137,6 +140,7 @@ def accounts():
 
 @bp.route("/transactions")
 def transactions():
+    """Render imported transactions with standalone PayPal rows hidden."""
     backfill_paypal_alternate_descriptions(db.session)
     db.session.commit()
     txns = (
@@ -150,6 +154,7 @@ def transactions():
 
 @bp.route("/reviews")
 def reviews():
+    """Show transactions that still need category/flag review."""
     pending_transactions = (
         Transaction.query.filter_by(review_state="pending")
         .order_by(Transaction.posted_date.desc(), Transaction.id.desc())
@@ -166,6 +171,7 @@ def reviews():
 
 @bp.route("/reviews/<int:transaction_id>", methods=["POST"])
 def update_review(transaction_id):
+    """Persist category, household flag, and review-state updates for one transaction."""
     transaction = Transaction.query.filter_by(id=transaction_id).first()
     if not transaction:
         flash("Transaction not found.", "error")
@@ -195,6 +201,7 @@ def update_review(transaction_id):
 
 
 def get_or_create_default_account():
+    """Return the default account for imports, creating a placeholder user/account when missing."""
     default_user_name = os.environ.get("DEFAULT_USER_NAME", "Sample User")
     default_account_name = os.environ.get("DEFAULT_ACCOUNT_NAME", "Default Account")
 
@@ -215,6 +222,7 @@ def get_or_create_default_account():
 
 @bp.route("/imports", methods=["GET", "POST"])
 def imports():
+    """Handle statement uploads and render import metadata history."""
     statement_type_options = [
         ("auto", DOCUMENT_TYPE_LABELS["auto"]),
         ("bank", DOCUMENT_TYPE_LABELS["bank"]),
@@ -323,6 +331,7 @@ def imports():
 
 @bp.route("/imports/update-account-key", methods=["POST"])
 def update_import_account_key():
+    """Update stored account key metadata for an existing import batch."""
     batch_id = request.form.get("batch_id", type=int)
     account_key = request.form.get("account_key", "").strip()
     import_page = request.form.get("import_page", default=1, type=int)

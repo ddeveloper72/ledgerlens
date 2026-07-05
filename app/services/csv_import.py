@@ -40,12 +40,14 @@ from app.services.merchant_mapping import create_or_get_merchant, resolve_mercha
 
 
 def _build_description(row, description_headers):
+    """Compose a normalized description from the configured description columns."""
     parts = [row.get(header, "").strip() for header in description_headers if row.get(header)]
     combined = " ".join(part for part in parts if part)
     return combined or "Unknown Transaction"
 
 
 def _merge_notes(existing_notes, extra_note):
+    """Append note fragments while avoiding duplicates and empty values."""
     if not extra_note:
         return existing_notes
 
@@ -59,6 +61,7 @@ def _merge_notes(existing_notes, extra_note):
 
 
 def parse_csv(file_storage):
+    """Parse CSV statement content into normalized transaction dictionaries."""
     csv_text = read_csv_text(file_storage)
     text_stream = io.StringIO(csv_text)
     sample = csv_text[:4096]
@@ -173,6 +176,7 @@ def import_transactions(
     manual_account_key=None,
     manual_bank_name=None,
 ):
+    """Import statement rows into SQLite with dedupe, reconciliation, and metadata capture."""
     fingerprint = compute_file_fingerprint(file_storage)
     existing_import = StatementImport.query.filter_by(fingerprint=fingerprint).first()
     if existing_import:

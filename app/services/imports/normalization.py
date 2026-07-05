@@ -5,6 +5,7 @@ from app.services.imports.exceptions import CSVImportError
 
 
 def normalize_date(raw_date):
+    """Parse common statement date formats into a date object."""
     candidate = raw_date.strip()
     supported_formats = ["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%d %b %y"]
 
@@ -18,6 +19,7 @@ def normalize_date(raw_date):
 
 
 def normalize_amount(raw_amount):
+    """Convert currency-like numeric text into Decimal(0.01) precision."""
     candidate = (
         raw_amount.strip()
         .replace(",", "")
@@ -36,6 +38,7 @@ def normalize_amount(raw_amount):
 
 
 def normalize_optional_amount(raw_amount):
+    """Return normalized amount or None when source value is empty."""
     if raw_amount is None:
         return None
 
@@ -46,17 +49,20 @@ def normalize_optional_amount(raw_amount):
 
 
 def clean_description(description):
+    """Trim and collapse whitespace in descriptions with length guard."""
     cleaned = " ".join(description.strip().split())
     return cleaned[:255]
 
 
 def row_value(row, key):
+    """Safely read a stripped string value from a row dictionary."""
     if not key:
         return ""
     return str(row.get(key, "")).strip()
 
 
 def derive_amount(row, schema):
+    """Derive signed amount from either unified amount or debit/credit columns."""
     if schema["amount"]:
         return normalize_amount(row.get(schema["amount"], "0"))
 

@@ -2,6 +2,7 @@ from app.models import Merchant, MerchantAlias
 
 
 def resolve_merchant(session, description):
+    """Resolve a merchant from alias matches, falling back to exact-name lookup."""
     description_lower = description.strip().lower()
     aliases = session.query(MerchantAlias).all()
 
@@ -14,6 +15,7 @@ def resolve_merchant(session, description):
 
 
 def create_or_get_merchant(session, name):
+    """Return an existing merchant by name or create a new one."""
     merchant = session.query(Merchant).filter_by(name=name.strip()).first()
     if merchant:
         return merchant

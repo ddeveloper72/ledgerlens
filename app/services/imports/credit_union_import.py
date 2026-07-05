@@ -8,6 +8,7 @@ from app.services.imports.normalization import clean_description, normalize_amou
 
 
 def infer_credit_union_context(description, amount, existing_notes):
+    """Append transfer-direction hints for credit-union related transactions."""
     text = description.lower()
     keywords = [
         "credit union",
@@ -38,6 +39,7 @@ def infer_credit_union_context(description, amount, existing_notes):
 
 
 def derive_amount_from_balance(previous_balance, current_balance, fallback_amount, description):
+    """Infer signed amount from balance deltas with keyword-based fallback."""
     if previous_balance is not None:
         delta = (current_balance - previous_balance).quantize(Decimal("0.01"))
         if delta != Decimal("0.00"):
@@ -60,6 +62,7 @@ def derive_amount_from_balance(previous_balance, current_balance, fallback_amoun
 
 
 def parse_hsecu_pdf_text(text):
+    """Parse extracted credit-union PDF text into normalized transaction rows."""
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     opening_balance_pattern = re.compile(
         r"^(?P<date>\d{2}\s+[A-Za-z]{3}\s+\d{2})\s+Opening Balance\s+(?P<balance>[\d,]+\.\d{2})$",
@@ -128,6 +131,7 @@ def parse_hsecu_pdf_text(text):
 
 
 def parse_pdf_statement(file_storage):
+    """Extract text from PDF upload and parse it as a credit-union statement."""
     file_storage.stream.seek(0)
     reader = PdfReader(file_storage.stream)
     text_content = "\n".join((page.extract_text() or "") for page in reader.pages)
