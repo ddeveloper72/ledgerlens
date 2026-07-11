@@ -90,6 +90,9 @@ class Transaction(db.Model):
     household_flag = db.Column(db.String(20), nullable=False, default="unknown")
     notes = db.Column(db.Text, nullable=True)
     review_state = db.Column(db.String(20), nullable=False, default="pending")
+    excluded_from_analysis = db.Column(db.Boolean, nullable=False, default=False)
+    exclusion_reason = db.Column(db.String(120), nullable=True)
+    excluded_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
 
     merchant = db.relationship("Merchant")

@@ -1,7 +1,7 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 
-from app.models import Transaction
+from app.models import Account, Transaction
 from app.services.imports.normalization import clean_description, derive_amount, row_value
 
 
@@ -86,6 +86,74 @@ def should_import_paypal_row(row, schema):
         return False
 
     return _is_paypal_payment_row(row, schema)
+
+
+PAYPAL_INTERNAL_MARKERS = {
+    "bank deposit": "PayPal bank funding entry",
+    "card deposit": "PayPal card funding entry",
+    "currency conversion": "PayPal currency conversion entry",
+    "authorization": "PayPal authorization entry",
+    "transfer": "PayPal internal transfer entry",
+    "withdrawal": "PayPal withdrawal entry",
+}
+
+
+def paypal_internal_reason(transaction):
+    """Return an auditable exclusion reason for a legacy PayPal processing row."""
+    text = " ".join(
+        value for value in [transaction.original_description, transaction.cleaned_description, transaction.notes]
+        if value
+    ).lower()
+    for marker, reason in PAYPAL_INTERNAL_MARKERS.items():
+        if marker in text:
+            return reason
+    return None
+
+
+def exclude_legacy_paypal_internal_rows(session):
+    """Mark legacy PayPal wallet bookkeeping rows excluded without deleting raw history."""
+    candidates = (
+        session.query(Transaction)
+        .join(Transaction.account)
+        .filter(
+            Transaction.excluded_from_analysis.is_(False),
+            Account.account_type == "wallet",
+            Account.name.ilike("%paypal%"),
+        )
+        .all()
+    )
+    excluded = 0
+    for transaction in candidates:
+        reason = paypal_internal_reason(transaction)
+        if not reason:
+            continue
+        transaction.excluded_from_analysis = True
+        transaction.exclusion_reason = reason
+        transaction.excluded_at = datetime.now()
+        excluded += 1
+    session.flush()
+    return excluded
+
+
+def restore_excluded_paypal_internal_rows(session):
+    """Restore rows excluded by this maintenance rule if an audit reversal is needed."""
+    rows = (
+        session.query(Transaction)
+        .join(Transaction.account)
+        .filter(
+            Transaction.excluded_from_analysis.is_(True),
+            Transaction.exclusion_reason.like("PayPal %"),
+            Account.account_type == "wallet",
+            Account.name.ilike("%paypal%"),
+        )
+        .all()
+    )
+    for transaction in rows:
+        transaction.excluded_from_analysis = False
+        transaction.exclusion_reason = None
+        transaction.excluded_at = None
+    session.flush()
+    return len(rows)
 
 
 def find_paypal_fx_settlement_amount(payment_row, raw_rows, schema, payment_amount):
@@ -222,6 +290,7 @@ def _find_paypal_reconciliation_candidate(session, account_id, posted_date, amou
         session.query(Transaction)
         .filter(
             Transaction.account_id == account_id,
+            Transaction.excluded_from_analysis.is_(False),
             Transaction.amount == amount,
             Transaction.posted_date >= start_date,
             Transaction.posted_date <= end_date,
@@ -256,6 +325,7 @@ def _find_historical_paypal_source_rows(session, account_id, posted_date, amount
         session.query(Transaction)
         .filter(
             Transaction.account_id == account_id,
+            Transaction.excluded_from_analysis.is_(False),
             Transaction.posted_date >= start_date,
             Transaction.posted_date <= end_date,
         )
@@ -330,7 +400,7 @@ def _merge_notes(existing_notes, extra_note):
 
 def backfill_paypal_alternate_descriptions(session, account_id=None):
     """Backfill PayPal alternate descriptions onto matching bank direct-debit rows."""
-    bank_rows_query = session.query(Transaction)
+    bank_rows_query = session.query(Transaction).filter(Transaction.excluded_from_analysis.is_(False))
     if account_id is not None:
         bank_rows_query = bank_rows_query.filter(Transaction.account_id == account_id)
 

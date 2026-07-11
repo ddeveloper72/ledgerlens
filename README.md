@@ -111,6 +111,8 @@ PayPal imports keep two deliberate modes:
 - Select a bank account to enrich/reconcile matching PayPal-funded bank transactions.
 - Select an account whose type is `wallet` to retain PayPal transactions as their own ledger.
 
+Legacy PayPal statements may contain internal funding, conversion, and authorization rows. On the Accounts page, use **Exclude Detected Internal Rows** to preserve those raw transactions while removing them from balances, reviews, recurrence detection, completeness counts, and analytics. Each exclusion records a reason and timestamp. **Restore Excluded Rows** reverses the operation.
+
 ## Category Automation
 
 - Tax includes TV Licence, Local Property Tax (LPT), property tax, car tax, and motor tax.

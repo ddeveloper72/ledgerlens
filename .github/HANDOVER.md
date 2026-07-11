@@ -206,3 +206,10 @@ Latest validation:
 - `61 passed`
 - `python run.py` returned HTTP 200
 - All primary GET pages returned HTTP 200 against the local development database
+
+### PayPal legacy internal-row exclusions
+- Added non-destructive transaction exclusion fields with runtime SQLite compatibility
+- Added explicit Accounts-page actions to exclude or restore PayPal wallet bookkeeping rows
+- Internal bank/card deposits, conversions, authorizations, transfers, and withdrawals remain stored with an audit reason and timestamp
+- Excluded rows are omitted from balances, review queues, categorization backfills, recurrence detection, merchant mapping, cash flow, analytics, and completeness reporting
+- Applied locally after schema upgrade: 60 of 83 PayPal wallet rows excluded, leaving 23 analysis-relevant rows; no raw rows deleted

@@ -24,6 +24,10 @@ from app.services.household_analytics import household_analytics_snapshot
 from app.services.merchant_service import (
     apply_mapping, ensure_category, infer_financial_labels, preview_mapping_count, save_mapping,
 )
+from app.services.imports.paypal_import import (
+    exclude_legacy_paypal_internal_rows,
+    restore_excluded_paypal_internal_rows,
+)
 from app.services.money import parse_money
 from app.services.period_service import apply_transaction_period, resolve_period
 from app.services.recurrence_service import (
@@ -83,7 +87,7 @@ def _build_smart_review_groups(pending_transactions):
 
 def _auto_align_reviewed_classifications():
     """Align reviewed outliers when a smart group has a strong majority category and flag."""
-    reviewed_transactions = Transaction.query.filter_by(review_state="reviewed").all()
+    reviewed_transactions = Transaction.query.filter_by(review_state="reviewed", excluded_from_analysis=False).all()
     grouped = defaultdict(list)
     for txn in reviewed_transactions:
         amount = Decimal(txn.amount).quantize(Decimal("0.01"))
@@ -177,10 +181,10 @@ def dashboard():
     except ValueError as exc:
         flash(str(exc), "error")
         period = resolve_period()
-    total_transactions = Transaction.query.count()
-    pending_transactions = Transaction.query.filter_by(review_state="pending").count()
+    total_transactions = Transaction.query.filter_by(excluded_from_analysis=False).count()
+    pending_transactions = Transaction.query.filter_by(review_state="pending", excluded_from_analysis=False).count()
     month_transactions = apply_transaction_period(
-        Transaction.query.order_by(Transaction.posted_date.desc(), Transaction.id.desc()),
+        Transaction.query.filter_by(excluded_from_analysis=False).order_by(Transaction.posted_date.desc(), Transaction.id.desc()),
         period,
         Transaction,
     ).all()
@@ -212,6 +216,7 @@ def dashboard():
     uncategorised_transactions = (
         Transaction.query.outerjoin(Category)
         .filter(
+            Transaction.excluded_from_analysis.is_(False),
             db.or_(
                 Transaction.category_id.is_(None),
                 Category.name == "Uncategorized",
@@ -227,7 +232,7 @@ def dashboard():
     recovery_snapshot = savings_recovery_summary(db.session)
     completeness = data_completeness_report(db.session, period)
     recent_transactions = (
-        Transaction.query.order_by(Transaction.posted_date.desc(), Transaction.id.desc())
+        Transaction.query.filter_by(excluded_from_analysis=False).order_by(Transaction.posted_date.desc(), Transaction.id.desc())
         .limit(8)
         .all()
     )
@@ -257,7 +262,7 @@ def dashboard():
 def _intelligence_context(preview=None):
     """Build the read-only intelligence page context."""
     period = resolve_period("current_month")
-    recent_transactions = Transaction.query.order_by(Transaction.posted_date.desc(), Transaction.id.desc()).limit(20).all()
+    recent_transactions = Transaction.query.filter_by(excluded_from_analysis=False).order_by(Transaction.posted_date.desc(), Transaction.id.desc()).limit(20).all()
     journey = []
     for txn in recent_transactions:
         merchant_name = txn.merchant.name if txn.merchant else "Unknown"
@@ -440,18 +445,39 @@ def accounts():
         balance = (
             db.session.query(db.func.coalesce(db.func.sum(Transaction.amount), Decimal("0.00")))
             .filter(Transaction.account_id == account.id)
+            .filter(Transaction.excluded_from_analysis.is_(False))
             .scalar()
         )
-        transaction_count = Transaction.query.filter_by(account_id=account.id).count()
+        transaction_count = Transaction.query.filter_by(account_id=account.id, excluded_from_analysis=False).count()
+        excluded_count = Transaction.query.filter_by(account_id=account.id, excluded_from_analysis=True).count()
         account_rows.append(
             {
                 "account": account,
                 "balance": balance,
                 "transaction_count": transaction_count,
+                "excluded_count": excluded_count,
             }
         )
 
     return render_template("accounts.html", account_rows=account_rows)
+
+
+@bp.route("/accounts/paypal-internal/exclude", methods=["POST"])
+def exclude_paypal_internal_rows():
+    """Explicitly exclude detected PayPal bookkeeping rows from financial analysis."""
+    excluded = exclude_legacy_paypal_internal_rows(db.session)
+    db.session.commit()
+    flash(f"Excluded {excluded} PayPal internal-processing transaction(s).", "success")
+    return redirect(url_for("main.accounts"))
+
+
+@bp.route("/accounts/paypal-internal/restore", methods=["POST"])
+def restore_paypal_internal_rows():
+    """Reverse PayPal internal-row exclusions while retaining the raw records."""
+    restored = restore_excluded_paypal_internal_rows(db.session)
+    db.session.commit()
+    flash(f"Restored {restored} PayPal internal-processing transaction(s).", "success")
+    return redirect(url_for("main.accounts"))
 
 
 @bp.route("/transactions")
@@ -459,6 +485,7 @@ def transactions():
     """Render imported transactions without mutating reconciliation metadata."""
     txns = (
         Transaction.query
+        .filter(Transaction.excluded_from_analysis.is_(False))
         .filter(~Transaction.cleaned_description.like("PayPal %"))
         .order_by(Transaction.posted_date.desc(), Transaction.id.desc())
         .all()
@@ -470,12 +497,12 @@ def transactions():
 def reviews():
     """Show transactions that still need category/flag review."""
     pending_transactions = (
-        Transaction.query.filter_by(review_state="pending")
+        Transaction.query.filter_by(review_state="pending", excluded_from_analysis=False)
         .order_by(Transaction.posted_date.desc(), Transaction.id.desc())
         .all()
     )
     reviewed_transactions = (
-        Transaction.query.filter_by(review_state="reviewed")
+        Transaction.query.filter_by(review_state="reviewed", excluded_from_analysis=False)
         .order_by(Transaction.posted_date.desc(), Transaction.id.desc())
         .limit(100)
         .all()
@@ -532,6 +559,7 @@ def bulk_update_reviews():
         Transaction.query.filter_by(
             account_id=account_id,
             review_state="pending",
+            excluded_from_analysis=False,
         )
         .filter(Transaction.amount == amount)
         .all()
@@ -561,7 +589,7 @@ def bulk_update_reviews():
     if household_flag not in HOUSEHOLD_FLAGS:
         household_flag = "unknown"
 
-    targets = Transaction.query.filter(Transaction.id.in_(target_ids)).all()
+    targets = Transaction.query.filter(Transaction.id.in_(target_ids), Transaction.excluded_from_analysis.is_(False)).all()
     for target in targets:
         target.category_id = category.id if category else None
         target.household_flag = household_flag
@@ -598,7 +626,7 @@ def auto_align_reviews():
 @bp.route("/reviews/<int:transaction_id>", methods=["POST"])
 def update_review(transaction_id):
     """Persist category, household flag, and review-state updates for one transaction."""
-    transaction = Transaction.query.filter_by(id=transaction_id).first()
+    transaction = Transaction.query.filter_by(id=transaction_id, excluded_from_analysis=False).first()
     if not transaction:
         flash("Transaction not found.", "error")
         return redirect(url_for("main.reviews"))
@@ -632,11 +660,12 @@ def update_review(transaction_id):
     if household_flag not in HOUSEHOLD_FLAGS:
         household_flag = "unknown"
 
-    query = Transaction.query.filter_by(id=transaction.id)
+    query = Transaction.query.filter_by(id=transaction.id, excluded_from_analysis=False)
     if apply_scope == "matching_description":
         query = Transaction.query.filter_by(
             account_id=transaction.account_id,
             cleaned_description=transaction.cleaned_description,
+            excluded_from_analysis=False,
         )
 
     targets = query.all()

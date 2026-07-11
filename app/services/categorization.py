@@ -77,6 +77,7 @@ def backfill_pending_categories(session):
         session.query(Transaction)
         .outerjoin(Category, Transaction.category_id == Category.id)
         .filter(Transaction.review_state == "pending")
+        .filter(Transaction.excluded_from_analysis.is_(False))
         .filter(
             (Transaction.category_id.is_(None)) | (Category.name == "Uncategorized")
         )

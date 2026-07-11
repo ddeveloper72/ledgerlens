@@ -9,13 +9,13 @@ def data_completeness_report(session, period, today=None, recent_days=45):
     account_rows = []
     stale_cutoff = today - timedelta(days=recent_days)
     for account in session.query(Account).order_by(Account.name).all():
-        latest_row = session.query(Transaction.posted_date).filter_by(account_id=account.id).order_by(Transaction.posted_date.desc()).first()
+        latest_row = session.query(Transaction.posted_date).filter_by(account_id=account.id, excluded_from_analysis=False).order_by(Transaction.posted_date.desc()).first()
         latest = latest_row[0] if latest_row else None
         account_rows.append({"account": account, "latest_date": latest, "stale": latest is None or latest < stale_cutoff})
-    unreviewed = session.query(Transaction).filter_by(review_state="pending").count()
-    uncategorized = session.query(Transaction).outerjoin(Category).filter((Transaction.category_id.is_(None)) | (Category.name == "Uncategorized")).count()
-    first_row = session.query(Transaction.posted_date).order_by(Transaction.posted_date.asc()).first()
-    last_row = session.query(Transaction.posted_date).order_by(Transaction.posted_date.desc()).first()
+    unreviewed = session.query(Transaction).filter_by(review_state="pending", excluded_from_analysis=False).count()
+    uncategorized = session.query(Transaction).outerjoin(Category).filter(Transaction.excluded_from_analysis.is_(False), (Transaction.category_id.is_(None)) | (Category.name == "Uncategorized")).count()
+    first_row = session.query(Transaction.posted_date).filter(Transaction.excluded_from_analysis.is_(False)).order_by(Transaction.posted_date.asc()).first()
+    last_row = session.query(Transaction.posted_date).filter(Transaction.excluded_from_analysis.is_(False)).order_by(Transaction.posted_date.desc()).first()
     represented_start = first_row[0] if first_row else None
     represented_end = last_row[0] if last_row else None
     warnings = []

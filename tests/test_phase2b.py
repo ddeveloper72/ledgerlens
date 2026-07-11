@@ -10,6 +10,10 @@ from app.models import (
 )
 from app.services.completeness_service import data_completeness_report
 from app.services.money import parse_money
+from app.services.imports.paypal_import import (
+    exclude_legacy_paypal_internal_rows,
+    restore_excluded_paypal_internal_rows,
+)
 from app.services.period_service import resolve_period
 from app.services.recurrence_service import detect_recurring_candidates, refresh_candidates
 from app.services.savings_service import add_recovery_event, savings_recovery_summary
@@ -153,3 +157,70 @@ def test_completeness_warning_and_period_filter(app):
         assert period.end_date == date(2026, 1, 31)
         assert report["complete"] is False
         assert report["warnings"]
+
+
+def test_paypal_internal_exclusion_is_auditable_idempotent_and_reversible(app):
+    with app.app_context():
+        user = User(name="Wallet User")
+        db.session.add(user)
+        db.session.flush()
+        wallet = Account(user_id=user.id, name="PayPal", account_type="wallet")
+        db.session.add(wallet)
+        db.session.flush()
+        internal = Transaction(
+            account_id=wallet.id,
+            posted_date=date(2026, 1, 1),
+            original_description="PayPal Bank Deposit to PP Account",
+            cleaned_description="PayPal Bank Deposit to PP Account",
+            amount=Decimal("50.00"),
+            review_state="pending",
+        )
+        merchant_payment = Transaction(
+            account_id=wallet.id,
+            posted_date=date(2026, 1, 2),
+            original_description="Example Merchant",
+            cleaned_description="Example Merchant",
+            amount=Decimal("-20.00"),
+            review_state="pending",
+        )
+        db.session.add_all([internal, merchant_payment])
+        db.session.commit()
+
+        assert exclude_legacy_paypal_internal_rows(db.session) == 1
+        db.session.commit()
+        assert Transaction.query.count() == 2
+        assert internal.excluded_from_analysis is True
+        assert internal.exclusion_reason == "PayPal bank funding entry"
+        assert internal.excluded_at is not None
+        assert merchant_payment.excluded_from_analysis is False
+        assert exclude_legacy_paypal_internal_rows(db.session) == 0
+
+        assert restore_excluded_paypal_internal_rows(db.session) == 1
+        db.session.commit()
+        assert internal.excluded_from_analysis is False
+        assert internal.exclusion_reason is None
+
+
+def test_paypal_exclusion_action_removes_internal_rows_from_balances_and_reviews(client, app):
+    with app.app_context():
+        user = User(name="Wallet Route User")
+        db.session.add(user)
+        db.session.flush()
+        wallet = Account(user_id=user.id, name="PayPal", account_type="wallet")
+        db.session.add(wallet)
+        db.session.flush()
+        db.session.add_all([
+            Transaction(account_id=wallet.id, posted_date=date(2026, 1, 1), original_description="PayPal Card Deposit", cleaned_description="PayPal Card Deposit", amount=Decimal("100.00"), review_state="pending"),
+            Transaction(account_id=wallet.id, posted_date=date(2026, 1, 2), original_description="Example Purchase", cleaned_description="Example Purchase", amount=Decimal("-25.00"), review_state="pending"),
+        ])
+        db.session.commit()
+
+    response = client.post("/accounts/paypal-internal/exclude", follow_redirects=True)
+    body = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "Excluded 1 PayPal internal-processing" in body
+    assert "-25.00" in body
+
+    reviews = client.get("/reviews").get_data(as_text=True)
+    assert "PayPal Card Deposit" not in reviews
+    assert "Example Purchase" in reviews

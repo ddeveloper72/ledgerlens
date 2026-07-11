@@ -161,6 +161,11 @@ def _apply_runtime_phase2b_updates():
         "savings_goal": {
             "repayment_per_payday": "NUMERIC(12, 2)",
         },
+        "transaction": {
+            "excluded_from_analysis": "BOOLEAN NOT NULL DEFAULT 0",
+            "exclusion_reason": "VARCHAR(120)",
+            "excluded_at": "DATETIME",
+        },
     }
     changed = False
     for table_name, columns in additions.items():
@@ -170,7 +175,9 @@ def _apply_runtime_phase2b_updates():
         for column_name, sql_type in columns.items():
             if column_name in existing:
                 continue
-            db.session.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {sql_type}"))
+            db.session.execute(
+                text(f'ALTER TABLE "{table_name}" ADD COLUMN "{column_name}" {sql_type}')
+            )
             changed = True
     if changed:
         db.session.commit()

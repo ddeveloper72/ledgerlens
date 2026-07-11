@@ -20,6 +20,7 @@
                 <option value="savings">Savings</option>
                 <option value="credit">Credit</option>
                 <option value="loan">Loan</option>
+                <option value="wallet">Wallet</option>
             </select>
 
             <button type="submit" class="primary-btn">Create Account</button>
@@ -39,6 +40,7 @@
                         <th>Name</th>
                         <th>Type</th>
                         <th>Transactions</th>
+                        <th>Excluded</th>
                         <th class="text-right">Balance</th>
                     </tr>
                 </thead>
@@ -48,16 +50,22 @@
                         <td>{{ row.account.name }}</td>
                         <td>{{ row.account.account_type }}</td>
                         <td>{{ row.transaction_count }}</td>
+                        <td>{{ row.excluded_count }}</td>
                         <td class="text-right">{{ '%.2f'|format(row.balance) }}</td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="4" class="text-center py-10 text-slate-500">No accounts created yet.</td>
+                        <td colspan="5" class="text-center py-10 text-slate-500">No accounts created yet.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
     </article>
+</section>
+
+<section class="panel mt-8" data-fade-in>
+    <div class="panel-head"><div><h2 class="panel-title">PayPal Internal Processing</h2><p class="text-sm text-slate-600">Preserve raw funding, conversion, and authorization rows while excluding them from balances, reviews, and analytics.</p></div></div>
+    <div class="flex gap-3"><form action="{{ url_for('main.exclude_paypal_internal_rows') }}" method="post"><button class="primary-btn" type="submit">Exclude Detected Internal Rows</button></form><form action="{{ url_for('main.restore_paypal_internal_rows') }}" method="post"><button class="pill-link" type="submit">Restore Excluded Rows</button></form></div>
 </section>
 {% endblock %}

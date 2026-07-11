@@ -48,7 +48,7 @@ def preview_mapping_count(session, alias_text):
         return 0
     return sum(
         alias_value in canonical_merchant_hint(txn.cleaned_description)
-        for txn in session.query(Transaction).filter_by(review_state="pending").all()
+        for txn in session.query(Transaction).filter_by(review_state="pending", excluded_from_analysis=False).all()
     )
 
 
@@ -58,7 +58,7 @@ def apply_mapping(session, alias, category_name):
         return 0
     category = ensure_category(session, category_name)
     updated = 0
-    for txn in session.query(Transaction).filter_by(review_state="pending").all():
+    for txn in session.query(Transaction).filter_by(review_state="pending", excluded_from_analysis=False).all():
         if alias.alias not in canonical_merchant_hint(txn.cleaned_description):
             continue
         txn.merchant_id = alias.merchant_id
