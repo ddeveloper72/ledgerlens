@@ -88,6 +88,37 @@ Supported date formats include `YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY`, and `DD
 pytest -q
 ```
 
+## Maintenance Commands
+
+Apply the current categorization rules to pending transactions that are still uncategorized:
+
+```bash
+flask --app run.py backfill-categories
+```
+
+The command is idempotent and does not overwrite reviewed classifications.
+
+Move a historical import batch to the correct financial account:
+
+```bash
+flask --app run.py reassign-import-batch --batch-id 3 --account-name "Credit Union" --account-type savings
+```
+
+The target account is created for the batch owner when it does not already exist.
+
+PayPal imports keep two deliberate modes:
+
+- Select a bank account to enrich/reconcile matching PayPal-funded bank transactions.
+- Select an account whose type is `wallet` to retain PayPal transactions as their own ledger.
+
+## Category Automation
+
+- Tax includes TV Licence, Local Property Tax (LPT), property tax, car tax, and motor tax.
+- Insurance includes home, car/motor, health, and pet insurance outflows.
+- Insurance Claims includes positive VHI and health-insurance claim/refund transactions.
+- Insurance Claims default to the `household` flag. An existing category/flag link is preserved if it has already been configured.
+- The dashboard reports monthly insurance spend, claims received, and net insurance cost.
+
 ## Project Structure
 
 ```text

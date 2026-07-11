@@ -1,5 +1,6 @@
 import os
 
+import click
 from dotenv import load_dotenv
 from flask import Flask
 from sqlalchemy import inspect, text
@@ -50,6 +51,60 @@ def create_app(config_class=Config):
     def init_db_command():
         db.create_all()
         print("Database tables created.")
+
+    @app.cli.command("backfill-categories")
+    def backfill_categories_command():
+        """Apply current category rules to pending uncategorized transactions."""
+        from app.services.categorization import backfill_pending_categories
+
+        updated = backfill_pending_categories(db.session)
+        db.session.commit()
+        print(f"Category backfill complete: {updated} transaction(s) updated.")
+
+    @app.cli.command("reassign-import-batch")
+    @click.option("--batch-id", type=int, required=True)
+    @click.option("--account-name", required=True)
+    @click.option("--account-type", default="checking", show_default=True)
+    def reassign_import_batch_command(batch_id, account_name, account_type):
+        """Move every transaction in one import batch to a named account."""
+        from app.models import Account, ImportBatch, Transaction
+
+        batch = db.session.get(ImportBatch, batch_id)
+        if not batch:
+            raise click.ClickException(f"Import batch #{batch_id} does not exist.")
+
+        transactions = Transaction.query.filter_by(import_batch_id=batch_id).all()
+        if not transactions:
+            raise click.ClickException(f"Import batch #{batch_id} has no transactions to move.")
+
+        user_ids = {transaction.account.user_id for transaction in transactions}
+        if len(user_ids) != 1:
+            raise click.ClickException(
+                f"Import batch #{batch_id} spans multiple users and cannot be reassigned safely."
+            )
+
+        user_id = user_ids.pop()
+        target = Account.query.filter_by(user_id=user_id, name=account_name).first()
+        if not target:
+            target = Account(
+                user_id=user_id,
+                name=account_name,
+                account_type=account_type,
+            )
+            db.session.add(target)
+            db.session.flush()
+
+        changed = 0
+        for transaction in transactions:
+            if transaction.account_id != target.id:
+                transaction.account_id = target.id
+                changed += 1
+
+        db.session.commit()
+        click.echo(
+            f"Batch #{batch_id}: {changed} of {len(transactions)} transaction(s) "
+            f"assigned to {target.name} (account #{target.id})."
+        )
 
     return app
 

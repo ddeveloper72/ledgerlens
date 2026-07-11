@@ -6,11 +6,13 @@
 <section class="grid gap-6 md:grid-cols-5" data-stagger>
     <article class="panel md:col-span-2">
         <h1 class="panel-title mb-2">Add Account</h1>
-        <p class="text-sm text-slate-600 mb-4">Create local household accounts used for statement imports and transaction tracking.</p>
+        <p class="text-sm text-slate-600 mb-4">Create local household accounts used for statement imports and
+            transaction tracking.</p>
 
         <form action="{{ url_for('main.accounts') }}" method="post" class="space-y-4">
             <label for="account_name" class="block text-sm font-semibold text-slate-700">Account Name</label>
-            <input id="account_name" name="account_name" type="text" class="file-input" placeholder="Example: Joint Current" required>
+            <input id="account_name" name="account_name" type="text" class="file-input"
+                placeholder="Example: Joint Current" required>
 
             <label for="account_type" class="block text-sm font-semibold text-slate-700">Account Type</label>
             <select id="account_type" name="account_type" class="file-input">
@@ -41,18 +43,18 @@
                     </tr>
                 </thead>
                 <tbody>
-                {% for row in account_rows %}
+                    {% for row in account_rows %}
                     <tr>
                         <td>{{ row.account.name }}</td>
                         <td>{{ row.account.account_type }}</td>
                         <td>{{ row.transaction_count }}</td>
                         <td class="text-right">{{ '%.2f'|format(row.balance) }}</td>
                     </tr>
-                {% else %}
+                    {% else %}
                     <tr>
                         <td colspan="4" class="text-center py-10 text-slate-500">No accounts created yet.</td>
                     </tr>
-                {% endfor %}
+                    {% endfor %}
                 </tbody>
             </table>
         </div>

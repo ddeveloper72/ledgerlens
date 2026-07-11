@@ -399,6 +399,37 @@ def test_paypal_import_skips_unmatched_rows_instead_of_creating_dump(app):
         assert Transaction.query.count() == 0
 
 
+def test_paypal_import_creates_ledger_rows_for_wallet_account(app):
+    with app.app_context():
+        user = User(name="PayPal Wallet User")
+        db.session.add(user)
+        db.session.flush()
+
+        wallet = Account(user_id=user.id, name="PayPal", account_type="wallet")
+        db.session.add(wallet)
+        db.session.commit()
+
+        payload = io.BytesIO(
+            b'"Date","Time","TimeZone","Name","Type","Status","Currency","Amount","Fees","Total","Exchange Rate","Receipt ID","Balance","Transaction ID","Item Title"\n'
+            b'"26/06/2026","03:22:45","IST","Sample Vendor","PreApproved Payment Bill User Payment","Completed","EUR","-17.99","0","-17.99","","","","TXN-WALLET-1",""\n'
+        )
+        file_storage = FileStorage(stream=payload, filename="paypal-wallet.csv")
+
+        result = import_transactions(
+            file_storage,
+            wallet.id,
+            declared_source="paypal",
+            manual_account_key="paypal-wallet",
+        )
+
+        assert result["created"] == 1
+        assert result["reconciled"] == 0
+        assert result["paypal_unmatched"] == 0
+        transaction = Transaction.query.one()
+        assert transaction.account_id == wallet.id
+        assert "Sample Vendor" in transaction.cleaned_description
+
+
 def test_paypal_fx_chain_reconciles_bank_amount_to_vendor_description(app):
     with app.app_context():
         user = User(name="FX Chain User")

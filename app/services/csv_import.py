@@ -2,7 +2,7 @@ import csv
 import io
 
 from app.extensions import db
-from app.models import ImportBatch, StatementImport, Transaction
+from app.models import Account, ImportBatch, StatementImport, Transaction
 from app.services.categorization import assign_category
 from app.services.imports.credit_union_import import (
     infer_credit_union_context,
@@ -177,6 +177,11 @@ def import_transactions(
     manual_bank_name=None,
 ):
     """Import statement rows into SQLite with dedupe, reconciliation, and metadata capture."""
+    target_account = db.session.get(Account, account_id)
+    if not target_account:
+        raise CSVImportError("The selected account does not exist.")
+
+    import_to_wallet = target_account.account_type == "wallet"
     fingerprint = compute_file_fingerprint(file_storage)
     existing_import = StatementImport.query.filter_by(fingerprint=fingerprint).first()
     if existing_import:
@@ -233,13 +238,22 @@ def import_transactions(
     skipped_unmatched_paypal = 0
 
     for row in rows:
-        if row.get("source") == "paypal":
+        if row.get("source") == "paypal" and not import_to_wallet:
             if reconcile_paypal_to_bank_transaction(db.session, account_id, row):
                 reconciled_count += 1
                 continue
 
             skipped_unmatched_paypal += 1
             continue
+
+        if row.get("source") == "paypal" and import_to_wallet:
+            wallet_description = row.get("paypal_alt_description")
+            if wallet_description:
+                row = {
+                    **row,
+                    "original_description": wallet_description,
+                    "cleaned_description": wallet_description,
+                }
 
         if is_transaction_duplicate(
             db.session,
@@ -255,8 +269,16 @@ def import_transactions(
         if merchant is None:
             merchant = create_or_get_merchant(db.session, row["cleaned_description"])
 
-        category = assign_category(db.session, merchant.name, row["cleaned_description"])
+        category = assign_category(
+            db.session,
+            merchant.name,
+            row["cleaned_description"],
+            row["amount"],
+        )
         category_id = None if category.name == "Uncategorized" else category.id
+        household_flag = row["household_flag"]
+        if category.name == "Insurance Claims" and household_flag == "unknown":
+            household_flag = "household"
 
         transaction = Transaction(
             account_id=account_id,
@@ -267,7 +289,7 @@ def import_transactions(
             merchant_id=merchant.id,
             category_id=category_id,
             amount=row["amount"],
-            household_flag=row["household_flag"],
+            household_flag=household_flag,
             notes=row["notes"],
             review_state="pending",
         )

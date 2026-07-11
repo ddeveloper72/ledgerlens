@@ -32,6 +32,17 @@
 
 <section class="panel mb-8" data-fade-in>
     <div class="panel-head">
+        <h2 class="panel-title">Monthly Insurance Position</h2>
+    </div>
+    <div class="grid gap-4 md:grid-cols-3">
+        <div class="summary-row"><span>Premium spend</span><span>{{ '%.2f'|format(insurance_spend) }}</span></div>
+        <div class="summary-row"><span>Claims received</span><span>{{ '%.2f'|format(insurance_claims) }}</span></div>
+        <div class="summary-row"><span>Net insurance cost</span><span>{{ '%.2f'|format(net_insurance_cost) }}</span></div>
+    </div>
+</section>
+
+<section class="panel mb-8" data-fade-in>
+    <div class="panel-head">
         <h1 class="panel-title">Top Categories (Monthly Spending)</h1>
     </div>
     <div class="overflow-x-auto">
@@ -43,16 +54,16 @@
                 </tr>
             </thead>
             <tbody>
-            {% for category_name, amount in top_categories %}
+                {% for category_name, amount in top_categories %}
                 <tr>
                     <td>{{ category_name }}</td>
                     <td class="text-right">{{ '%.2f'|format(amount) }}</td>
                 </tr>
-            {% else %}
+                {% else %}
                 <tr>
                     <td colspan="2" class="text-center py-8 text-slate-500">No spending transactions this month.</td>
                 </tr>
-            {% endfor %}
+                {% endfor %}
             </tbody>
         </table>
     </div>
@@ -66,24 +77,24 @@
         <p class="text-sm text-slate-600 mb-3">Expected this month</p>
         <ul class="space-y-2 text-sm mb-4">
             {% for item in recurring_expected %}
-                <li class="summary-row">
-                    <span>{{ item.expected_day }} · {{ item.merchant_name }}</span>
-                    <span>{{ '%.2f'|format(item.expected_amount) }}</span>
-                </li>
+            <li class="summary-row">
+                <span>{{ item.expected_day }} · {{ item.merchant_name }}</span>
+                <span>{{ '%.2f'|format(item.expected_amount) }}</span>
+            </li>
             {% else %}
-                <li class="text-slate-500">No recurring patterns detected yet.</li>
+            <li class="text-slate-500">No recurring patterns detected yet.</li>
             {% endfor %}
         </ul>
 
         <p class="text-sm text-slate-600 mb-3">Missing this month</p>
         <ul class="space-y-2 text-sm">
             {% for item in recurring_missing %}
-                <li class="summary-row">
-                    <span>{{ item.expected_day }} · {{ item.merchant_name }}</span>
-                    <span class="text-rose-700">Missing</span>
-                </li>
+            <li class="summary-row">
+                <span>{{ item.expected_day }} · {{ item.merchant_name }}</span>
+                <span class="text-rose-700">Missing</span>
+            </li>
             {% else %}
-                <li class="text-slate-500">No missing recurring payments flagged.</li>
+            <li class="text-slate-500">No missing recurring payments flagged.</li>
             {% endfor %}
         </ul>
     </article>
@@ -94,12 +105,13 @@
         </div>
         <ul class="space-y-2 text-sm">
             {% for event in cash_calendar %}
-                <li class="summary-row">
-                    <span>{{ event.date }} · {{ event.label }}</span>
-                    <span class="{{ 'text-emerald-700' if event.flow == 'in' else 'text-rose-700' }}">{{ '%.2f'|format(event.amount) }}</span>
-                </li>
+            <li class="summary-row">
+                <span>{{ event.date }} · {{ event.label }}</span>
+                <span class="{{ 'text-emerald-700' if event.flow == 'in' else 'text-rose-700' }}">{{
+                    '%.2f'|format(event.amount) }}</span>
+            </li>
             {% else %}
-                <li class="text-slate-500">No cash-flow events this month.</li>
+            <li class="text-slate-500">No cash-flow events this month.</li>
             {% endfor %}
         </ul>
     </article>
@@ -111,13 +123,20 @@
             <h2 class="panel-title">Household Analytics</h2>
         </div>
         <ul class="space-y-2 text-sm">
-            <li class="summary-row"><span>Avg monthly groceries</span><span>{{ '%.2f'|format(analytics_snapshot.avg_monthly_groceries) }}</span></li>
-            <li class="summary-row"><span>Technology subscriptions</span><span>{{ '%.2f'|format(analytics_snapshot.technology_subscriptions_yearly) }}</span></li>
-            <li class="summary-row"><span>Car costs (tracked)</span><span>{{ '%.2f'|format(analytics_snapshot.car_cost_12m) }}</span></li>
-            <li class="summary-row"><span>Pet costs (tracked)</span><span>{{ '%.2f'|format(analytics_snapshot.pet_cost_12m) }}</span></li>
-            <li class="summary-row"><span>Allowances (tracked)</span><span>{{ '%.2f'|format(analytics_snapshot.allowances_12m) }}</span></li>
-            <li class="summary-row"><span>Essential spend</span><span>{{ '%.2f'|format(analytics_snapshot.essential_spend) }}</span></li>
-            <li class="summary-row"><span>Discretionary spend</span><span>{{ '%.2f'|format(analytics_snapshot.discretionary_spend) }}</span></li>
+            <li class="summary-row"><span>Avg monthly groceries</span><span>{{
+                    '%.2f'|format(analytics_snapshot.avg_monthly_groceries) }}</span></li>
+            <li class="summary-row"><span>Technology subscriptions</span><span>{{
+                    '%.2f'|format(analytics_snapshot.technology_subscriptions_yearly) }}</span></li>
+            <li class="summary-row"><span>Car costs (tracked)</span><span>{{
+                    '%.2f'|format(analytics_snapshot.car_cost_12m) }}</span></li>
+            <li class="summary-row"><span>Pet costs (tracked)</span><span>{{
+                    '%.2f'|format(analytics_snapshot.pet_cost_12m) }}</span></li>
+            <li class="summary-row"><span>Allowances (tracked)</span><span>{{
+                    '%.2f'|format(analytics_snapshot.allowances_12m) }}</span></li>
+            <li class="summary-row"><span>Essential spend</span><span>{{
+                    '%.2f'|format(analytics_snapshot.essential_spend) }}</span></li>
+            <li class="summary-row"><span>Discretionary spend</span><span>{{
+                    '%.2f'|format(analytics_snapshot.discretionary_spend) }}</span></li>
         </ul>
     </article>
 
@@ -127,15 +146,17 @@
             <a href="{{ url_for('main.savings_recovery') }}" class="pill-link">Manage</a>
         </div>
         {% if recovery_snapshot %}
-            <ul class="space-y-2 text-sm">
-                <li class="summary-row"><span>Goal</span><span>{{ recovery_snapshot.goal_name }}</span></li>
-                <li class="summary-row"><span>Current</span><span>{{ '%.2f'|format(recovery_snapshot.current_amount) }}</span></li>
-                <li class="summary-row"><span>Target</span><span>{{ '%.2f'|format(recovery_snapshot.target_amount) }}</span></li>
-                <li class="summary-row"><span>Gap</span><span>{{ '%.2f'|format(recovery_snapshot.gap) }}</span></li>
-                <li class="summary-row"><span>Progress</span><span>{{ recovery_snapshot.progress_percent }}%</span></li>
-            </ul>
+        <ul class="space-y-2 text-sm">
+            <li class="summary-row"><span>Goal</span><span>{{ recovery_snapshot.goal_name }}</span></li>
+            <li class="summary-row"><span>Current</span><span>{{ '%.2f'|format(recovery_snapshot.current_amount)
+                    }}</span></li>
+            <li class="summary-row"><span>Target</span><span>{{ '%.2f'|format(recovery_snapshot.target_amount) }}</span>
+            </li>
+            <li class="summary-row"><span>Gap</span><span>{{ '%.2f'|format(recovery_snapshot.gap) }}</span></li>
+            <li class="summary-row"><span>Progress</span><span>{{ recovery_snapshot.progress_percent }}%</span></li>
+        </ul>
         {% else %}
-            <p class="text-sm text-slate-500">No emergency recovery goal exists yet.</p>
+        <p class="text-sm text-slate-500">No emergency recovery goal exists yet.</p>
         {% endif %}
     </article>
 </section>
@@ -156,18 +177,19 @@
                 </tr>
             </thead>
             <tbody>
-            {% for txn in recent_transactions %}
+                {% for txn in recent_transactions %}
                 <tr>
                     <td>{{ txn.posted_date }}</td>
                     <td>{{ txn.cleaned_description }}</td>
                     <td>{{ txn.category.name if txn.category else 'Uncategorized' }}</td>
                     <td class="text-right">{{ '%.2f'|format(txn.amount) }}</td>
                 </tr>
-            {% else %}
+                {% else %}
                 <tr>
-                    <td colspan="4" class="text-center py-10 text-slate-500">No transactions yet. Upload a CSV to begin.</td>
+                    <td colspan="4" class="text-center py-10 text-slate-500">No transactions yet. Upload a CSV to begin.
+                    </td>
                 </tr>
-            {% endfor %}
+                {% endfor %}
             </tbody>
         </table>
     </div>

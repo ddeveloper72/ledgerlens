@@ -6,17 +6,21 @@
 <section class="grid gap-6 md:grid-cols-5" data-stagger>
     <article class="panel md:col-span-2">
         <h1 class="panel-title mb-2">Merchant Intelligence</h1>
-        <p class="text-sm text-slate-600 mb-4">Teach the system one mapping once, then reuse it automatically on future imports.</p>
+        <p class="text-sm text-slate-600 mb-4">Teach the system one mapping once, then reuse it automatically on future
+            imports.</p>
 
         <form action="{{ url_for('main.intelligence') }}" method="post" class="space-y-4">
             <label for="alias_text" class="block text-sm font-semibold text-slate-700">Raw Alias</label>
-            <input id="alias_text" name="alias_text" type="text" class="file-input" placeholder="Example: PAYPAL *MICROSOFT" required>
+            <input id="alias_text" name="alias_text" type="text" class="file-input"
+                placeholder="Example: PAYPAL *MICROSOFT" required>
 
             <label for="merchant_name" class="block text-sm font-semibold text-slate-700">Merchant</label>
-            <input id="merchant_name" name="merchant_name" type="text" class="file-input" placeholder="Example: Microsoft" required>
+            <input id="merchant_name" name="merchant_name" type="text" class="file-input"
+                placeholder="Example: Microsoft" required>
 
             <label for="category_name" class="block text-sm font-semibold text-slate-700">Category</label>
-            <input id="category_name" name="category_name" type="text" class="file-input" placeholder="Example: Subscriptions" required>
+            <input id="category_name" name="category_name" type="text" class="file-input"
+                placeholder="Example: Subscriptions" required>
 
             <label class="inline-flex items-center gap-2 text-sm text-slate-700">
                 <input type="checkbox" name="apply_existing">
@@ -43,7 +47,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                {% for item in merchant_journey %}
+                    {% for item in merchant_journey %}
                     <tr>
                         <td>{{ item.transaction.cleaned_description }}</td>
                         <td>{{ item.merchant_name }}</td>
@@ -51,11 +55,12 @@
                         <td>{{ item.labels.subtype }}</td>
                         <td>{{ item.labels.recurrence }}</td>
                     </tr>
-                {% else %}
+                    {% else %}
                     <tr>
-                        <td colspan="5" class="text-center py-10 text-slate-500">No transactions available for intelligence preview.</td>
+                        <td colspan="5" class="text-center py-10 text-slate-500">No transactions available for
+                            intelligence preview.</td>
                     </tr>
-                {% endfor %}
+                    {% endfor %}
                 </tbody>
             </table>
         </div>
@@ -67,12 +72,12 @@
         <h2 class="panel-title mb-3">Recurring Detection</h2>
         <ul class="space-y-2 text-sm">
             {% for item in recurring_expected %}
-                <li class="summary-row">
-                    <span>{{ item.expected_day }} · {{ item.merchant_name }}</span>
-                    <span>{{ '%.2f'|format(item.expected_amount) }}</span>
-                </li>
+            <li class="summary-row">
+                <span>{{ item.expected_day }} · {{ item.merchant_name }}</span>
+                <span>{{ '%.2f'|format(item.expected_amount) }}</span>
+            </li>
             {% else %}
-                <li class="text-slate-500">No recurring candidates yet.</li>
+            <li class="text-slate-500">No recurring candidates yet.</li>
             {% endfor %}
         </ul>
     </article>
@@ -81,12 +86,12 @@
         <h2 class="panel-title mb-3">Missing This Month</h2>
         <ul class="space-y-2 text-sm">
             {% for item in recurring_missing %}
-                <li class="summary-row">
-                    <span>{{ item.expected_day }} · {{ item.merchant_name }}</span>
-                    <span class="text-rose-700">Missing</span>
-                </li>
+            <li class="summary-row">
+                <span>{{ item.expected_day }} · {{ item.merchant_name }}</span>
+                <span class="text-rose-700">Missing</span>
+            </li>
             {% else %}
-                <li class="text-slate-500">No missing recurring payments currently.</li>
+            <li class="text-slate-500">No missing recurring payments currently.</li>
             {% endfor %}
         </ul>
     </article>
@@ -98,12 +103,13 @@
     </div>
     <ul class="space-y-2 text-sm">
         {% for event in cash_calendar %}
-            <li class="summary-row">
-                <span>{{ event.date }} · {{ event.label }}</span>
-                <span class="{{ 'text-emerald-700' if event.flow == 'in' else 'text-rose-700' }}">{{ '%.2f'|format(event.amount) }}</span>
-            </li>
+        <li class="summary-row">
+            <span>{{ event.date }} · {{ event.label }}</span>
+            <span class="{{ 'text-emerald-700' if event.flow == 'in' else 'text-rose-700' }}">{{
+                '%.2f'|format(event.amount) }}</span>
+        </li>
         {% else %}
-            <li class="text-slate-500">No events in current month.</li>
+        <li class="text-slate-500">No events in current month.</li>
         {% endfor %}
     </ul>
 </section>

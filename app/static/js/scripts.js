@@ -99,9 +99,44 @@ function autoDismissFlash() {
     }, 2800);
 }
 
+function wireReviewCategoryInterlock() {
+    const sections = document.querySelectorAll("[data-category-flag-map]");
+    sections.forEach((section) => {
+        let map = {};
+        try {
+            map = JSON.parse(section.dataset.categoryFlagMap || "{}");
+        } catch (_error) {
+            map = {};
+        }
+
+        const forms = section.querySelectorAll("form");
+        forms.forEach((form) => {
+            const categorySelect = form.querySelector("select[name='category_name']");
+            const categoryCustom = form.querySelector("input[name='category_name_custom']");
+            const flagSelect = form.querySelector("select[name='household_flag']");
+            if (!categorySelect || !flagSelect) {
+                return;
+            }
+
+            categorySelect.addEventListener("change", () => {
+                const selected = categorySelect.value;
+                if (selected === "__new__" && categoryCustom) {
+                    categoryCustom.focus();
+                    return;
+                }
+
+                if (selected && map[selected]) {
+                    flagSelect.value = map[selected];
+                }
+            });
+        });
+    });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     animateEntrance();
     wireTransactionFilter();
     wireDescriptionToggles();
+    wireReviewCategoryInterlock();
     autoDismissFlash();
 });

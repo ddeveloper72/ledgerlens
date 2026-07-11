@@ -3,11 +3,93 @@
 {% block title %}Review Queue | LedgerLens{% endblock %}
 
 {% block content %}
-<section class="panel" data-fade-in>
+<section class="panel" data-fade-in data-category-flag-map='{{ category_flag_rules|tojson }}'>
     <div class="panel-head">
-        <h1 class="panel-title">Pending Review</h1>
+        <h2 class="panel-title">Smart Bulk Suggestions</h2>
+        <div class="flex items-center gap-3">
+            <span class="text-sm text-slate-600">Pattern + amount matching</span>
+            <form action="{{ url_for('main.auto_align_reviews') }}" method="post">
+                <button type="submit" class="primary-btn">Auto-align Reviewed Outliers</button>
+            </form>
+        </div>
+    </div>
+
+    <p class="text-sm text-slate-600 mb-4">
+        Use this to auto-group repeated payments where numeric references change.
+        Example: recurring credit-union payments with the same amount.
+    </p>
+
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr>
+                    <th>Sample Description</th>
+                    <th>Pattern Key</th>
+                    <th class="text-right">Amount</th>
+                    <th class="text-right">Rows</th>
+                    <th>Account</th>
+                    <th>Apply</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for group in smart_bulk_groups %}
+                <tr>
+                    <td>{{ group.sample_description }}</td>
+                    <td><span class="smart-key">{{ group.pattern_key }}</span></td>
+                    <td class="text-right">{{ '%.2f'|format(group.amount) }}</td>
+                    <td class="text-right">{{ group.count }}</td>
+                    <td>{{ group.account_name }}</td>
+                    <td>
+                        <form action="{{ url_for('main.bulk_update_reviews') }}" method="post" class="review-form-grid review-form-grid--bulk">
+                            <input type="hidden" name="account_id" value="{{ group.account_id }}">
+                            <input type="hidden" name="pattern_key" value="{{ group.pattern_key }}">
+                            <input type="hidden" name="amount" value="{{ group.amount_value }}">
+                            <select name="category_name" class="file-input" data-category-select>
+                                <option value="">Uncategorized</option>
+                                {% for category_name in category_names %}
+                                    <option value="{{ category_name }}">{{ category_name }}</option>
+                                {% endfor %}
+                                <option value="__new__">Custom...</option>
+                            </select>
+                            <input type="text" name="category_name_custom" class="file-input" placeholder="Custom category (optional)">
+                            <select name="household_flag" class="file-input">
+                                {% for flag in household_flags %}
+                                    <option value="{{ flag }}">{{ flag }}</option>
+                                {% endfor %}
+                            </select>
+                            <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                                <input type="checkbox" name="interlock_flag">
+                                Link category to flag
+                            </label>
+                            <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                                <input type="checkbox" name="use_linked_flag" checked>
+                                Use linked flag if available
+                            </label>
+                            <input type="hidden" name="review_state" value="reviewed">
+                            <button type="submit" class="primary-btn">Apply to Group</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-center py-8 text-slate-500">No smart group matches yet. Import more rows or review remaining items.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="panel" data-fade-in data-category-flag-map='{{ category_flag_rules|tojson }}'>
+    <div class="panel-head">
+        <h1 class="panel-title">Review Queue</h1>
         <span class="text-sm text-slate-600">{{ pending_transactions|length }} transaction(s)</span>
     </div>
+
+    <p class="text-sm text-slate-600 mb-4">
+        Category and flag updates can be applied to all rows with the same description.
+        Use "Link category to flag" to interlock future selections.
+    </p>
 
     <div class="overflow-x-auto">
         <table class="w-full text-sm">
@@ -29,12 +111,31 @@
                     <td class="text-right">{{ '%.2f'|format(txn.amount) }}</td>
                     <td colspan="3">
                         <form action="{{ url_for('main.update_review', transaction_id=txn.id) }}" method="post" class="review-form-grid">
-                            <input type="text" name="category_name" class="file-input" value="{{ txn.category.name if txn.category else '' }}" placeholder="Category name">
+                            <select name="category_name" class="file-input" data-category-select>
+                                <option value="">Uncategorized</option>
+                                {% for category_name in category_names %}
+                                    <option value="{{ category_name }}" {{ 'selected' if txn.category and txn.category.name == category_name else '' }}>{{ category_name }}</option>
+                                {% endfor %}
+                                <option value="__new__">Custom...</option>
+                            </select>
+                            <input type="text" name="category_name_custom" class="file-input" placeholder="Custom category (optional)">
                             <select name="household_flag" class="file-input">
                                 {% for flag in household_flags %}
                                     <option value="{{ flag }}" {{ 'selected' if txn.household_flag == flag else '' }}>{{ flag }}</option>
                                 {% endfor %}
                             </select>
+                            <select name="apply_scope" class="file-input">
+                                <option value="matching_description" selected>Apply to all matching descriptions</option>
+                                <option value="single">Only this row</option>
+                            </select>
+                            <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                                <input type="checkbox" name="interlock_flag">
+                                Link category to flag
+                            </label>
+                            <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                                <input type="checkbox" name="use_linked_flag" checked>
+                                Use linked flag if available
+                            </label>
                             <input type="hidden" name="review_state" value="reviewed">
                             <button type="submit" class="primary-btn">Save & Review</button>
                         </form>
@@ -43,6 +144,72 @@
                 {% else %}
                 <tr>
                     <td colspan="6" class="text-center py-10 text-slate-500">No pending transactions. Great work.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="panel mt-8" data-fade-in data-category-flag-map='{{ category_flag_rules|tojson }}'>
+    <div class="panel-head">
+        <h2 class="panel-title">Corrections</h2>
+        <span class="text-sm text-slate-600">{{ reviewed_transactions|length }} reviewed transaction(s)</span>
+    </div>
+
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th class="text-right">Amount</th>
+                    <th>Category</th>
+                    <th>Flag</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for txn in reviewed_transactions %}
+                <tr>
+                    <td>{{ txn.posted_date }}</td>
+                    <td>{{ txn.cleaned_description }}</td>
+                    <td class="text-right">{{ '%.2f'|format(txn.amount) }}</td>
+                    <td colspan="3">
+                        <form action="{{ url_for('main.update_review', transaction_id=txn.id) }}" method="post" class="review-form-grid">
+                            <select name="category_name" class="file-input" data-category-select>
+                                <option value="">Uncategorized</option>
+                                {% for category_name in category_names %}
+                                    <option value="{{ category_name }}" {{ 'selected' if txn.category and txn.category.name == category_name else '' }}>{{ category_name }}</option>
+                                {% endfor %}
+                                <option value="__new__">Custom...</option>
+                            </select>
+                            <input type="text" name="category_name_custom" class="file-input" placeholder="Custom category (optional)">
+                            <select name="household_flag" class="file-input">
+                                {% for flag in household_flags %}
+                                    <option value="{{ flag }}" {{ 'selected' if txn.household_flag == flag else '' }}>{{ flag }}</option>
+                                {% endfor %}
+                            </select>
+                            <select name="apply_scope" class="file-input">
+                                <option value="matching_description" selected>Apply to all matching descriptions</option>
+                                <option value="single">Only this row</option>
+                            </select>
+                            <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                                <input type="checkbox" name="interlock_flag">
+                                Link category to flag
+                            </label>
+                            <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                                <input type="checkbox" name="use_linked_flag" checked>
+                                Use linked flag if available
+                            </label>
+                            <input type="hidden" name="review_state" value="reviewed">
+                            <button type="submit" class="primary-btn">Save Correction</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-center py-10 text-slate-500">No reviewed transactions yet.</td>
                 </tr>
                 {% endfor %}
             </tbody>

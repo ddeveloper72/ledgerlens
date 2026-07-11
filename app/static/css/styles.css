@@ -162,8 +162,23 @@ table tbody td {
 .review-form-grid {
     display: grid;
     gap: 0.5rem;
-    grid-template-columns: 1.4fr 1fr auto;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     align-items: center;
+}
+
+.review-form-grid--bulk {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.smart-key {
+    display: inline-block;
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 0.75rem;
+    color: #334155;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.4rem;
+    padding: 0.15rem 0.4rem;
 }
 
 .desc-cell {

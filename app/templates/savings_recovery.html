@@ -10,13 +10,16 @@
 
         <form action="{{ url_for('main.savings_recovery') }}" method="post" class="space-y-4">
             <label for="goal_name" class="block text-sm font-semibold text-slate-700">Plan Name</label>
-            <input id="goal_name" name="goal_name" type="text" class="file-input" value="{{ recovery_snapshot.goal_name if recovery_snapshot else 'Emergency Fund' }}" required>
+            <input id="goal_name" name="goal_name" type="text" class="file-input"
+                value="{{ recovery_snapshot.goal_name if recovery_snapshot else 'Emergency Fund' }}" required>
 
             <label for="current_amount" class="block text-sm font-semibold text-slate-700">Current Amount</label>
-            <input id="current_amount" name="current_amount" type="number" step="0.01" class="file-input" value="{{ recovery_snapshot.current_amount if recovery_snapshot else '0.00' }}" required>
+            <input id="current_amount" name="current_amount" type="number" step="0.01" class="file-input"
+                value="{{ recovery_snapshot.current_amount if recovery_snapshot else '0.00' }}" required>
 
             <label for="target_amount" class="block text-sm font-semibold text-slate-700">Target Amount</label>
-            <input id="target_amount" name="target_amount" type="number" step="0.01" class="file-input" value="{{ recovery_snapshot.target_amount if recovery_snapshot else '0.00' }}" required>
+            <input id="target_amount" name="target_amount" type="number" step="0.01" class="file-input"
+                value="{{ recovery_snapshot.target_amount if recovery_snapshot else '0.00' }}" required>
 
             <button type="submit" class="primary-btn">Save Recovery Plan</button>
         </form>
@@ -25,16 +28,20 @@
     <article class="panel md:col-span-3">
         <h2 class="panel-title mb-4">Recovery Summary</h2>
         {% if recovery_snapshot %}
-            <ul class="space-y-2 text-sm">
-                <li class="summary-row"><span>Goal</span><span>{{ recovery_snapshot.goal_name }}</span></li>
-                <li class="summary-row"><span>Current</span><span>{{ '%.2f'|format(recovery_snapshot.current_amount) }}</span></li>
-                <li class="summary-row"><span>Target</span><span>{{ '%.2f'|format(recovery_snapshot.target_amount) }}</span></li>
-                <li class="summary-row"><span>Gap to Recover</span><span>{{ '%.2f'|format(recovery_snapshot.gap) }}</span></li>
-                <li class="summary-row"><span>Progress</span><span>{{ recovery_snapshot.progress_percent }}%</span></li>
-                <li class="summary-row"><span>Target Date</span><span>{{ recovery_snapshot.target_date if recovery_snapshot.target_date else 'Not set' }}</span></li>
-            </ul>
+        <ul class="space-y-2 text-sm">
+            <li class="summary-row"><span>Goal</span><span>{{ recovery_snapshot.goal_name }}</span></li>
+            <li class="summary-row"><span>Current</span><span>{{ '%.2f'|format(recovery_snapshot.current_amount)
+                    }}</span></li>
+            <li class="summary-row"><span>Target</span><span>{{ '%.2f'|format(recovery_snapshot.target_amount) }}</span>
+            </li>
+            <li class="summary-row"><span>Gap to Recover</span><span>{{ '%.2f'|format(recovery_snapshot.gap) }}</span>
+            </li>
+            <li class="summary-row"><span>Progress</span><span>{{ recovery_snapshot.progress_percent }}%</span></li>
+            <li class="summary-row"><span>Target Date</span><span>{{ recovery_snapshot.target_date if
+                    recovery_snapshot.target_date else 'Not set' }}</span></li>
+        </ul>
         {% else %}
-            <p class="text-sm text-slate-500">No emergency-fund plan exists yet. Add one using the form.</p>
+        <p class="text-sm text-slate-500">No emergency-fund plan exists yet. Add one using the form.</p>
         {% endif %}
     </article>
 </section>

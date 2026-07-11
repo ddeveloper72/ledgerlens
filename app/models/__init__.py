@@ -39,6 +39,14 @@ class Category(db.Model):
     name = db.Column(db.String(120), unique=True, nullable=False)
 
 
+class CategoryFlagRule(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    category_id = db.Column(db.Integer, db.ForeignKey("category.id"), nullable=False, unique=True)
+    household_flag = db.Column(db.String(20), nullable=False, default="unknown")
+
+    category = db.relationship("Category")
+
+
 class ImportBatch(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     source_filename = db.Column(db.String(255), nullable=False)
