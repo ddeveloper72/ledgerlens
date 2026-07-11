@@ -32,8 +32,10 @@ def create_app(config_class=Config):
         ImportBatch,
         Merchant,
         MerchantAlias,
+        RecurringCandidate,
         RecurringBill,
         SavingsGoal,
+        SavingsRecoveryEvent,
         StatementImport,
         Transaction,
         User,
@@ -46,6 +48,7 @@ def create_app(config_class=Config):
     with app.app_context():
         db.create_all()
         _apply_runtime_statement_import_updates()
+        _apply_runtime_phase2b_updates()
 
     @app.cli.command("init-db")
     def init_db_command():
@@ -137,3 +140,37 @@ def _apply_runtime_statement_import_updates():
         )
     )
     db.session.commit()
+
+
+def _apply_runtime_phase2b_updates():
+    """Add Phase 2B columns to existing local SQLite databases without destructive changes."""
+    inspector = inspect(db.engine)
+    table_names = set(inspector.get_table_names())
+    additions = {
+        "merchant_alias": {
+            "origin": "VARCHAR(20) NOT NULL DEFAULT 'manual'",
+            "active": "BOOLEAN NOT NULL DEFAULT 1",
+        },
+        "recurring_bill": {
+            "display_name": "VARCHAR(120)",
+            "amount_tolerance": "NUMERIC(12, 2) NOT NULL DEFAULT 0",
+            "expected_next_date": "DATE",
+            "household_flag": "VARCHAR(20) NOT NULL DEFAULT 'unknown'",
+            "active": "BOOLEAN NOT NULL DEFAULT 1",
+        },
+        "savings_goal": {
+            "repayment_per_payday": "NUMERIC(12, 2)",
+        },
+    }
+    changed = False
+    for table_name, columns in additions.items():
+        if table_name not in table_names:
+            continue
+        existing = {column["name"] for column in inspector.get_columns(table_name)}
+        for column_name, sql_type in columns.items():
+            if column_name in existing:
+                continue
+            db.session.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {sql_type}"))
+            changed = True
+    if changed:
+        db.session.commit()

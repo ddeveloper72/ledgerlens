@@ -4,7 +4,7 @@ from app.models import Merchant, MerchantAlias
 def resolve_merchant(session, description):
     """Resolve a merchant from alias matches, falling back to exact-name lookup."""
     description_lower = description.strip().lower()
-    aliases = session.query(MerchantAlias).all()
+    aliases = session.query(MerchantAlias).filter_by(active=True).all()
 
     for alias in aliases:
         if alias.alias.lower() in description_lower:

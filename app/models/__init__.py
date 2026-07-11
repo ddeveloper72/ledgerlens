@@ -30,6 +30,8 @@ class MerchantAlias(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     alias = db.Column(db.String(120), unique=True, nullable=False)
     merchant_id = db.Column(db.Integer, db.ForeignKey("merchant.id"), nullable=False)
+    origin = db.Column(db.String(20), nullable=False, default="manual")
+    active = db.Column(db.Boolean, nullable=False, default=True)
 
     merchant = db.relationship("Merchant", backref="aliases")
 
@@ -100,6 +102,39 @@ class RecurringBill(db.Model):
     category_id = db.Column(db.Integer, db.ForeignKey("category.id"), nullable=True)
     expected_amount = db.Column(db.Numeric(12, 2), nullable=True)
     cadence = db.Column(db.String(30), nullable=False, default="monthly")
+    display_name = db.Column(db.String(120), nullable=True)
+    amount_tolerance = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    expected_next_date = db.Column(db.Date, nullable=True)
+    household_flag = db.Column(db.String(20), nullable=False, default="unknown")
+    active = db.Column(db.Boolean, nullable=False, default=True)
+
+    merchant = db.relationship("Merchant")
+    category = db.relationship("Category")
+
+
+class RecurringCandidate(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    merchant_id = db.Column(db.Integer, db.ForeignKey("merchant.id"), nullable=True)
+    normalized_description = db.Column(db.String(120), nullable=False)
+    display_name = db.Column(db.String(120), nullable=False)
+    category_id = db.Column(db.Integer, db.ForeignKey("category.id"), nullable=True)
+    observed_count = db.Column(db.Integer, nullable=False)
+    first_observed_date = db.Column(db.Date, nullable=False)
+    last_observed_date = db.Column(db.Date, nullable=False)
+    typical_amount = db.Column(db.Numeric(12, 2), nullable=False)
+    amount_variation = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    frequency = db.Column(db.String(20), nullable=False, default="irregular")
+    estimated_next_date = db.Column(db.Date, nullable=True)
+    confidence_score = db.Column(db.Numeric(5, 2), nullable=False, default=0)
+    status = db.Column(db.String(20), nullable=False, default="pending")
+    amount_tolerance = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    household_flag = db.Column(db.String(20), nullable=False, default="unknown")
+    active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+    reviewed_at = db.Column(db.DateTime, nullable=True)
+
+    merchant = db.relationship("Merchant")
+    category = db.relationship("Category")
 
 
 class SavingsGoal(db.Model):
@@ -108,3 +143,17 @@ class SavingsGoal(db.Model):
     target_amount = db.Column(db.Numeric(12, 2), nullable=False)
     current_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     target_date = db.Column(db.Date, nullable=True)
+    repayment_per_payday = db.Column(db.Numeric(12, 2), nullable=True)
+
+
+class SavingsRecoveryEvent(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    savings_goal_id = db.Column(db.Integer, db.ForeignKey("savings_goal.id"), nullable=False)
+    event_date = db.Column(db.Date, nullable=False)
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+    event_type = db.Column(db.String(20), nullable=False)
+    reason = db.Column(db.String(120), nullable=False)
+    note = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+
+    savings_goal = db.relationship("SavingsGoal", backref="recovery_events")
