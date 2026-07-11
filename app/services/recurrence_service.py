@@ -136,6 +136,7 @@ def recurring_expected_vs_missing(session, today=None):
     for bill in session.query(RecurringBill).filter_by(active=True).all():
         expected_date = bill.expected_next_date
         record = {
+            "bill_id": bill.id,
             "merchant_name": bill.display_name or (bill.merchant.name if bill.merchant else "Recurring payment"),
             "expected_day": expected_date.day if expected_date else 1,
             "expected_amount": Decimal(bill.expected_amount or 0),
@@ -145,3 +146,30 @@ def recurring_expected_vs_missing(session, today=None):
         if expected_date and expected_date < today:
             missing.append(record)
     return {"expected": expected, "missing": missing}
+
+
+def deactivate_ineligible_recurring_records(session):
+    """Retire alerts whose merchant has no analysis-eligible outgoing transactions."""
+    retired = 0
+    for bill in session.query(RecurringBill).filter_by(active=True).all():
+        eligible = (
+            session.query(Transaction)
+            .filter(
+                Transaction.merchant_id == bill.merchant_id,
+                Transaction.amount < 0,
+                Transaction.excluded_from_analysis.is_(False),
+                Transaction.internal_transfer.is_(False),
+            )
+            .first()
+        )
+        if eligible:
+            continue
+        bill.active = False
+        candidate = session.query(RecurringCandidate).filter_by(merchant_id=bill.merchant_id).first()
+        if candidate:
+            candidate.active = False
+            candidate.status = "rejected"
+            candidate.reviewed_at = datetime.now()
+        retired += 1
+    session.flush()
+    return retired

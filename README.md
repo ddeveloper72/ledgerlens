@@ -127,6 +127,7 @@ Confirmed Credit Union internal movements remain balance-affecting ledger entrie
 
 - Intelligence GET pages are read-only; detection and previews do not persist records.
 - Recurring suggestions show observation dates, typical amount, variation, frequency, next-date estimate, and confidence before confirmation.
+- Confirmed recurring rules remain editable and can be deactivated directly from Missing reports using **Not recurring**; source transactions are never deleted or reclassified by that action.
 - Supported recurrence frequencies are weekly, fortnightly, monthly, quarterly, annual, and irregular.
 - Merchant mappings expose origin and status, with a read-only impact preview before optional application.
 - Savings recovery uses withdrawal, repayment, and adjustment events to calculate the current position.

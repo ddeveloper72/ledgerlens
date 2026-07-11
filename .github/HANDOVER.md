@@ -226,3 +226,10 @@ Latest validation:
 - Added `Apply to matching payee pattern` to review correction forms
 - Canonicalized `AN POST TV LIC` to the stable merchant `An Post TV Licence`
 - Applied locally: two historical variants now share one merchant while remaining Tax/household
+
+### Recurring alert management
+- Added `Not recurring` actions to dashboard and intelligence Missing reports
+- Confirmed recurring candidates can be edited or deactivated from the recurring review page
+- Deactivation preserves all source transactions and their reviewed classifications
+- Internal/excluded-only merchant alerts are retired during explicit maintenance actions
+- Applied locally: VDP-LEAP CARD APP and EFT DISBUR alerts deactivated; LEAP transactions remain reviewed Transport/personal

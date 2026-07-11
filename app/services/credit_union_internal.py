@@ -51,5 +51,8 @@ def mark_credit_union_internal_movements(session):
         transaction.household_flag = "personal"
         transaction.review_state = "reviewed"
         updated += 1
+    from app.services.recurrence_service import deactivate_ineligible_recurring_records
+
+    deactivate_ineligible_recurring_records(session)
     session.flush()
     return updated

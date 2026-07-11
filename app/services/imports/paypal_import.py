@@ -131,6 +131,9 @@ def exclude_legacy_paypal_internal_rows(session):
         transaction.exclusion_reason = reason
         transaction.excluded_at = datetime.now()
         excluded += 1
+    from app.services.recurrence_service import deactivate_ineligible_recurring_records
+
+    deactivate_ineligible_recurring_records(session)
     session.flush()
     return excluded
 

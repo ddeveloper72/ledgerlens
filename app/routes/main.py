@@ -353,8 +353,13 @@ def refresh_recurring_candidates():
 def reject_recurring_candidate(candidate_id):
     candidate = db.get_or_404(RecurringCandidate, candidate_id)
     reject_candidate(candidate)
+    from app.models import RecurringBill
+
+    bill = RecurringBill.query.filter_by(merchant_id=candidate.merchant_id).first()
+    if bill:
+        bill.active = False
     db.session.commit()
-    flash("Recurring candidate rejected.", "success")
+    flash("Recurring candidate rejected and its alert deactivated.", "success")
     return redirect(url_for("main.recurring_candidates"))
 
 
@@ -373,6 +378,24 @@ def confirm_recurring_candidate(candidate_id):
     db.session.commit()
     flash("Recurring candidate confirmed.", "success")
     return redirect(url_for("main.recurring_candidates"))
+
+
+@bp.route("/recurring-bills/<int:bill_id>/deactivate", methods=["POST"])
+def deactivate_recurring_bill(bill_id):
+    """Deactivate a false recurring alert without changing its source transactions."""
+    from datetime import datetime
+    from app.models import RecurringBill
+
+    bill = db.get_or_404(RecurringBill, bill_id)
+    bill.active = False
+    candidate = RecurringCandidate.query.filter_by(merchant_id=bill.merchant_id).first()
+    if candidate:
+        candidate.active = False
+        candidate.status = "rejected"
+        candidate.reviewed_at = datetime.now()
+    db.session.commit()
+    flash("Recurring alert deactivated. Source transactions were not changed.", "success")
+    return redirect(request.referrer or url_for("main.recurring_candidates"))
 
 
 @bp.route("/savings-recovery", methods=["GET", "POST"])

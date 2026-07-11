@@ -122,7 +122,12 @@
             {% for item in recurring_missing %}
             <li class="summary-row">
                 <span>{{ item.expected_day }} · {{ item.merchant_name }}</span>
-                <span class="text-rose-700">Missing</span>
+                <span class="flex items-center gap-2">
+                    <span class="text-rose-700">Missing</span>
+                    <form action="{{ url_for('main.deactivate_recurring_bill', bill_id=item.bill_id) }}" method="post">
+                        <button class="pill-link" type="submit">Not recurring</button>
+                    </form>
+                </span>
             </li>
             {% else %}
             <li class="text-slate-500">No missing recurring payments flagged.</li>

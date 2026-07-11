@@ -19,7 +19,11 @@ from app.services.imports.paypal_import import (
     restore_excluded_paypal_internal_rows,
 )
 from app.services.period_service import resolve_period
-from app.services.recurrence_service import detect_recurring_candidates, refresh_candidates
+from app.services.recurrence_service import (
+    deactivate_ineligible_recurring_records,
+    detect_recurring_candidates,
+    refresh_candidates,
+)
 from app.services.savings_service import add_recovery_event, savings_recovery_summary
 
 
@@ -104,6 +108,47 @@ def test_candidate_confirm_edit_and_reject(client, app):
     client.post(f"/recurring-candidates/{candidate_id}/reject")
     with app.app_context():
         assert db.session.get(RecurringCandidate, candidate_id).status == "rejected"
+        assert RecurringBill.query.one().active is False
+
+
+def test_missing_report_can_deactivate_alert_without_changing_transactions(client, app):
+    with app.app_context():
+        account = make_account()
+        merchant = Merchant(name="Variable Transport Example")
+        db.session.add(merchant)
+        db.session.flush()
+        transaction = Transaction(account_id=account.id, merchant_id=merchant.id, posted_date=date(2026, 1, 1), original_description="Variable Transport Example", cleaned_description="Variable Transport Example", amount=Decimal("-5.00"), review_state="reviewed")
+        bill = RecurringBill(merchant_id=merchant.id, display_name="Variable Transport Example", cadence="weekly", expected_amount=Decimal("5.00"), expected_next_date=date(2026, 1, 8), active=True)
+        candidate = RecurringCandidate(merchant_id=merchant.id, normalized_description="variable transport example", display_name="Variable Transport Example", observed_count=3, first_observed_date=date(2025, 12, 1), last_observed_date=date(2026, 1, 1), typical_amount=Decimal("5.00"), amount_variation=Decimal("1.00"), frequency="weekly", estimated_next_date=date(2026, 1, 8), confidence_score=Decimal("80.00"), status="confirmed", active=True)
+        db.session.add_all([transaction, bill, candidate])
+        db.session.commit()
+        bill_id = bill.id
+        candidate_id = candidate.id
+        transaction_id = transaction.id
+    response = client.post(f"/recurring-bills/{bill_id}/deactivate", follow_redirects=True)
+    assert response.status_code == 200
+    with app.app_context():
+        assert db.session.get(RecurringBill, bill_id).active is False
+        assert db.session.get(RecurringCandidate, candidate_id).status == "rejected"
+        assert db.session.get(Transaction, transaction_id) is not None
+        assert db.session.get(Transaction, transaction_id).review_state == "reviewed"
+
+
+def test_internal_only_recurring_alert_is_retired(app):
+    with app.app_context():
+        account = make_account()
+        merchant = Merchant(name="Internal Movement Example")
+        db.session.add(merchant)
+        db.session.flush()
+        db.session.add(Transaction(account_id=account.id, merchant_id=merchant.id, posted_date=date(2026, 1, 1), original_description="Internal Movement Example", cleaned_description="Internal Movement Example", amount=Decimal("-10.00"), internal_transfer=True, review_state="reviewed"))
+        bill = RecurringBill(merchant_id=merchant.id, cadence="weekly", expected_amount=Decimal("10.00"), active=True)
+        candidate = RecurringCandidate(merchant_id=merchant.id, normalized_description="internal movement example", display_name="Internal Movement Example", observed_count=3, first_observed_date=date(2025, 12, 1), last_observed_date=date(2026, 1, 1), typical_amount=Decimal("10.00"), amount_variation=Decimal("0.00"), frequency="weekly", confidence_score=Decimal("90.00"), status="confirmed", active=True)
+        db.session.add_all([bill, candidate])
+        db.session.commit()
+        assert deactivate_ineligible_recurring_records(db.session) == 1
+        db.session.commit()
+        assert bill.active is False
+        assert candidate.status == "rejected"
 
 
 def test_mapping_preview_is_read_only_and_application_is_explicit(client, app):

@@ -8,15 +8,15 @@
 <section class="panel mt-6" data-fade-in>
     <div class="panel-head"><h2 class="panel-title">{{ candidate.display_name }}</h2><span class="smart-key">{{ candidate.status }} &middot; {{ candidate.confidence_score }}% confidence</span></div>
     <div class="grid gap-3 md:grid-cols-3 text-sm mb-5"><p>Observed: {{ candidate.observed_count }} times</p><p>Range: {{ candidate.first_observed_date }} to {{ candidate.last_observed_date }}</p><p>Typical: {{ '%.2f'|format(candidate.typical_amount) }}</p><p>Variation: {{ '%.2f'|format(candidate.amount_variation) }}</p><p>Frequency: {{ candidate.frequency }}</p><p>Next estimate: {{ candidate.estimated_next_date or 'Unknown' }}</p></div>
-    {% if candidate.status == 'pending' %}
+    {% if candidate.status in ['pending', 'confirmed'] %}
     <form action="{{ url_for('main.confirm_recurring_candidate', candidate_id=candidate.id) }}" method="post" class="review-form-grid">
         <input class="file-input" name="display_name" value="{{ candidate.display_name }}" required>
         <select class="file-input" name="category_name">{% for category in categories %}<option value="{{ category.name }}" {{ 'selected' if candidate.category_id == category.id else '' }}>{{ category.name }}</option>{% endfor %}</select>
         <select class="file-input" name="frequency">{% for frequency in frequencies %}<option value="{{ frequency }}" {{ 'selected' if candidate.frequency == frequency else '' }}>{{ frequency }}</option>{% endfor %}</select>
         <input class="file-input" name="expected_amount" value="{{ candidate.typical_amount }}" required><input class="file-input" name="amount_tolerance" value="{{ candidate.amount_tolerance }}" required><input class="file-input" type="date" name="expected_next_date" value="{{ candidate.estimated_next_date or '' }}">
-        <select class="file-input" name="household_flag">{% for flag in household_flags %}<option value="{{ flag }}" {{ 'selected' if candidate.household_flag == flag else '' }}>{{ flag }}</option>{% endfor %}</select><label class="text-sm"><input type="checkbox" name="active" {{ 'checked' if candidate.active else '' }}> Active</label><button class="primary-btn" type="submit">Edit and Confirm</button>
+        <select class="file-input" name="household_flag">{% for flag in household_flags %}<option value="{{ flag }}" {{ 'selected' if candidate.household_flag == flag else '' }}>{{ flag }}</option>{% endfor %}</select><label class="text-sm"><input type="checkbox" name="active" {{ 'checked' if candidate.active else '' }}> Active</label><button class="primary-btn" type="submit">{{ 'Save Recurring Rule' if candidate.status == 'confirmed' else 'Edit and Confirm' }}</button>
     </form>
-    <form action="{{ url_for('main.reject_recurring_candidate', candidate_id=candidate.id) }}" method="post" class="mt-3"><button class="pill-link" type="submit">Reject</button></form>
+    <form action="{{ url_for('main.reject_recurring_candidate', candidate_id=candidate.id) }}" method="post" class="mt-3"><button class="pill-link" type="submit">{{ 'Not recurring / deactivate' if candidate.status == 'confirmed' else 'Reject' }}</button></form>
     {% endif %}
 </section>
 {% else %}<section class="panel mt-6"><p class="text-slate-500">No candidates persisted. Use Refresh Candidates to run detection.</p></section>{% endfor %}
