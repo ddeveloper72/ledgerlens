@@ -1,5 +1,4 @@
 import os
-import re
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
@@ -29,6 +28,7 @@ from app.services.imports.paypal_import import (
     restore_excluded_paypal_internal_rows,
 )
 from app.services.credit_union_internal import mark_credit_union_internal_movements
+from app.services.description_patterns import description_pattern_key
 from app.services.money import parse_money
 from app.services.period_service import apply_transaction_period, resolve_period
 from app.services.recurrence_service import (
@@ -42,13 +42,7 @@ bp = Blueprint("main", __name__)
 HOUSEHOLD_FLAGS = ["household", "personal", "shared", "reimbursable", "unknown"]
 
 
-def _description_pattern_key(description):
-    """Return a normalized key that groups near-identical descriptions with changing numeric references."""
-    normalized = " ".join((description or "").upper().split())
-    normalized = re.sub(r"\d{3,}", "<NUMSEQ>", normalized)
-    normalized = re.sub(r"\b\d+\b", "<NUM>", normalized)
-    normalized = re.sub(r"\s+", " ", normalized).strip()
-    return normalized
+_description_pattern_key = description_pattern_key
 
 
 def _build_smart_review_groups(pending_transactions):
@@ -682,6 +676,15 @@ def update_review(transaction_id):
             excluded_from_analysis=False,
             internal_transfer=False,
         )
+    elif apply_scope == "matching_pattern":
+        candidates = Transaction.query.filter_by(
+            account_id=transaction.account_id,
+            excluded_from_analysis=False,
+            internal_transfer=False,
+        ).all()
+        pattern_key = description_pattern_key(transaction.cleaned_description)
+        target_ids = [row.id for row in candidates if description_pattern_key(row.cleaned_description) == pattern_key]
+        query = Transaction.query.filter(Transaction.id.in_(target_ids))
 
     targets = query.all()
     for target in targets:

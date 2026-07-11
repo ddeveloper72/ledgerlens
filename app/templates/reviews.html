@@ -125,7 +125,8 @@
                                 {% endfor %}
                             </select>
                             <select name="apply_scope" class="file-input">
-                                <option value="matching_description" selected>Apply to all matching descriptions</option>
+                                <option value="matching_pattern" selected>Apply to matching payee pattern</option>
+                                <option value="matching_description">Apply to exact descriptions</option>
                                 <option value="single">Only this row</option>
                             </select>
                             <label class="inline-flex items-center gap-2 text-sm text-slate-700">
@@ -191,7 +192,8 @@
                                 {% endfor %}
                             </select>
                             <select name="apply_scope" class="file-input">
-                                <option value="matching_description" selected>Apply to all matching descriptions</option>
+                                <option value="matching_pattern" selected>Apply to matching payee pattern</option>
+                                <option value="matching_description">Apply to exact descriptions</option>
                                 <option value="single">Only this row</option>
                             </select>
                             <label class="inline-flex items-center gap-2 text-sm text-slate-700">

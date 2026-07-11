@@ -109,6 +109,15 @@ def create_app(config_class=Config):
             f"assigned to {target.name} (account #{target.id})."
         )
 
+    @app.cli.command("canonicalize-payees")
+    def canonicalize_payees_command():
+        """Apply stable merchant identities to known changing-reference payees."""
+        from app.services.merchant_mapping import canonicalize_known_payees
+
+        updated = canonicalize_known_payees(db.session)
+        db.session.commit()
+        click.echo(f"Known-payee canonicalization complete: {updated} transaction(s) updated.")
+
     return app
 
 

@@ -5,6 +5,7 @@ from app.extensions import db
 from app.models import Account, ImportBatch, StatementImport, Transaction
 from app.services.categorization import assign_category, get_or_create_category
 from app.services.credit_union_internal import credit_union_internal_rule
+from app.services.description_patterns import learned_pattern_classification
 from app.services.imports.credit_union_import import (
     infer_credit_union_context,
     parse_hsecu_pdf_text,
@@ -292,13 +293,25 @@ def import_transactions(
         if category.name == "Insurance Claims" and household_flag == "unknown":
             household_flag = "household"
 
+        learned = learned_pattern_classification(
+            db.session,
+            account_id,
+            row["cleaned_description"],
+        )
+        merchant_id = merchant.id
+        if learned and not internal_transfer:
+            category_id = learned["category_id"]
+            household_flag = learned["household_flag"]
+            merchant_id = learned["merchant_id"] or merchant_id
+            review_state = "reviewed"
+
         transaction = Transaction(
             account_id=account_id,
             import_batch_id=import_batch.id,
             posted_date=row["posted_date"],
             original_description=row["original_description"],
             cleaned_description=row["cleaned_description"],
-            merchant_id=merchant.id,
+            merchant_id=merchant_id,
             category_id=category_id,
             amount=row["amount"],
             household_flag=household_flag,

@@ -278,3 +278,46 @@ def test_dashboard_does_not_count_internal_savings_transfer_as_income(client, ap
         db.session.commit()
     body = client.get("/").get_data(as_text=True)
     assert "Monthly Income</p>\n        <p class=\"metric-value\">0.00" in body
+
+
+def test_future_reference_variant_reuses_reviewed_payee_classification(app):
+    with app.app_context():
+        user = User(name="Pattern Learning User")
+        db.session.add(user)
+        db.session.flush()
+        account = Account(user_id=user.id, name="Household Account", account_type="checking")
+        tax = Category(name="Tax")
+        db.session.add_all([account, tax])
+        db.session.flush()
+        for reference in ["REF100001", "REF100002"]:
+            merchant = Merchant(name=f"Historic {reference}")
+            db.session.add(merchant)
+            db.session.flush()
+            db.session.add(Transaction(account_id=account.id, merchant_id=merchant.id, category_id=tax.id, posted_date=date(2026, 1, 1), original_description=f"D/D AN POST TV LIC {reference}", cleaned_description=f"D/D AN POST TV LIC {reference}", amount=Decimal("-10.00"), household_flag="household", review_state="reviewed"))
+        db.session.commit()
+
+        payload = FileStorage(stream=io.BytesIO(b"date,description,amount\n2026-03-01,D/D AN POST TV LIC REF100003,-10.00\n"), filename="new-reference.csv")
+        result = import_transactions(payload, account.id)
+        imported = Transaction.query.filter(Transaction.cleaned_description.like("%REF100003%")).one()
+        assert result["created"] == 1
+        assert imported.category.name == "Tax"
+        assert imported.household_flag == "household"
+        assert imported.review_state == "reviewed"
+        assert imported.merchant.name == "An Post TV Licence"
+
+
+def test_review_matching_pattern_updates_reference_variants(client, app):
+    with app.app_context():
+        account = make_account()
+        rows = []
+        for reference in ["REF200001", "REF200002"]:
+            rows.append(Transaction(account_id=account.id, posted_date=date(2026, 1, 1), original_description=f"D/D EXAMPLE SERVICE {reference}", cleaned_description=f"D/D EXAMPLE SERVICE {reference}", amount=Decimal("-12.00"), review_state="pending"))
+        db.session.add_all(rows)
+        db.session.commit()
+        first_id = rows[0].id
+    response = client.post(f"/reviews/{first_id}", data={"category_name": "Utilities", "household_flag": "household", "review_state": "reviewed", "apply_scope": "matching_pattern"}, follow_redirects=True)
+    assert response.status_code == 200
+    with app.app_context():
+        updated = Transaction.query.order_by(Transaction.id).all()
+        assert all(row.category and row.category.name == "Utilities" for row in updated)
+        assert all(row.review_state == "reviewed" for row in updated)

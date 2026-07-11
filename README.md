@@ -135,6 +135,12 @@ Confirmed Credit Union internal movements remain balance-affecting ledger entrie
 
 Financial intelligence is descriptive and may be incomplete; it is not definitive financial advice.
 
+## Changing Payment References
+
+LedgerLens normalizes long numeric reference sequences when comparing reviewed descriptions. When at least two reviewed transactions in the same account share a normalized pattern and unanimously agree on category and household flag, a future reference variant reuses that reviewed classification automatically. The review form also supports **Apply to matching payee pattern**.
+
+Known stable payees can use a canonical merchant identity. For example, changing `AN POST TV LIC` references map to `An Post TV Licence` while retaining the original transaction description for audit purposes.
+
 ## Project Structure
 
 ```text

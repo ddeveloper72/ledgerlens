@@ -219,3 +219,10 @@ Latest validation:
 - `MNGTFEE` maps to personal Savings and `EFT DISBUR` maps to personal Transfers
 - Future Credit Union imports apply these user-confirmed rules automatically
 - Applied locally: 25 MNGTFEE and 44 EFT DISBUR rows marked reviewed internal transfers; no rows deleted
+
+### Changing-reference payee learning
+- Added shared numeric-reference normalization for smart grouping, review scope, and import-time learning
+- Two or more unanimous reviewed examples in the same account can automatically classify a future reference variant
+- Added `Apply to matching payee pattern` to review correction forms
+- Canonicalized `AN POST TV LIC` to the stable merchant `An Post TV Licence`
+- Applied locally: two historical variants now share one merchant while remaining Tax/household
