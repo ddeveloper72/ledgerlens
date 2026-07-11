@@ -3,6 +3,37 @@
 {% block title %}Dashboard | LedgerLens{% endblock %}
 
 {% block content %}
+<section class="panel mb-6" data-fade-in>
+    <form method="get" action="{{ url_for('main.dashboard') }}" class="review-form-grid">
+        <select name="period" class="file-input">
+            <option value="current_month" {{ 'selected' if period.key == 'current_month' else '' }}>Current month</option>
+            <option value="previous_month" {{ 'selected' if period.key == 'previous_month' else '' }}>Previous month</option>
+            <option value="last_3_months" {{ 'selected' if period.key == 'last_3_months' else '' }}>Last 3 months</option>
+            <option value="custom" {{ 'selected' if period.key == 'custom' else '' }}>Custom range</option>
+        </select>
+        <input type="date" name="start_date" class="file-input" value="{{ period.start_date }}">
+        <input type="date" name="end_date" class="file-input" value="{{ period.end_date }}">
+        <button class="primary-btn" type="submit">Apply Period</button>
+    </form>
+    <p class="text-sm text-slate-600 mt-3">Reporting period: {{ period.label }}</p>
+</section>
+
+{% if completeness.warnings %}
+<section class="panel mb-6 border-amber-300 bg-amber-50" data-fade-in>
+    <h2 class="panel-title">Analysis may be incomplete</h2>
+    <p class="text-sm text-slate-700 mb-2">These figures are descriptive and should not be treated as definitive financial advice.</p>
+    <ul class="list-disc pl-5 text-sm text-slate-700">{% for warning in completeness.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+<section class="panel mb-6" data-fade-in>
+    <div class="panel-head"><h2 class="panel-title">Data Completeness</h2></div>
+    <p class="text-sm text-slate-600 mb-3">Imported range: {{ completeness.represented_start or 'None' }} to {{ completeness.represented_end or 'None' }}</p>
+    <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Account</th><th>Latest transaction</th><th>Status</th></tr></thead><tbody>
+        {% for row in completeness.accounts %}<tr><td>{{ row.account.name }}</td><td>{{ row.latest_date or 'No imports' }}</td><td>{{ 'Needs recent import' if row.stale else 'Current' }}</td></tr>{% endfor %}
+    </tbody></table></div>
+</section>
+
 <section class="grid gap-4 md:grid-cols-3 mb-8" data-stagger>
     <article class="metric-card">
         <p class="metric-label">Monthly Income</p>

@@ -3,6 +3,9 @@
 {% block title %}Imports | LedgerLens{% endblock %}
 
 {% block content %}
+<section class="panel mb-6" data-fade-in>
+    <div class="panel-head"><div><h2 class="panel-title">Legacy Metadata Maintenance</h2><p class="text-sm text-slate-600">Run only when older import batches need source metadata.</p></div><form action="{{ url_for('main.amend_import_metadata') }}" method="post"><button class="pill-link" type="submit">Run Maintenance</button></form></div>
+</section>
 <section class="grid gap-6 md:grid-cols-5" data-stagger>
     <article class="panel md:col-span-3">
         <h1 class="panel-title mb-2">Import Transactions</h1>

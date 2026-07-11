@@ -1,0 +1,155 @@
+from datetime import date, timedelta
+from decimal import Decimal
+
+import pytest
+
+from app.extensions import db
+from app.models import (
+    Account, Category, Merchant, MerchantAlias, RecurringBill, RecurringCandidate,
+    SavingsGoal, SavingsRecoveryEvent, StatementImport, Transaction, User,
+)
+from app.services.completeness_service import data_completeness_report
+from app.services.money import parse_money
+from app.services.period_service import resolve_period
+from app.services.recurrence_service import detect_recurring_candidates, refresh_candidates
+from app.services.savings_service import add_recovery_event, savings_recovery_summary
+
+
+def make_account():
+    user = User(name="Generic User")
+    db.session.add(user)
+    db.session.flush()
+    account = Account(user_id=user.id, name="Generic Account", account_type="checking")
+    db.session.add(account)
+    db.session.flush()
+    return account
+
+
+def add_series(account, frequency_days, amounts=None, start=date(2025, 1, 1), merchant_name="Example Service"):
+    merchant = Merchant.query.filter_by(name=merchant_name).first() or Merchant(name=merchant_name)
+    db.session.add(merchant)
+    db.session.flush()
+    amounts = amounts or [Decimal("10.00")] * 4
+    for index, amount in enumerate(amounts):
+        posted = start + timedelta(days=frequency_days * index)
+        db.session.add(Transaction(account_id=account.id, merchant_id=merchant.id, posted_date=posted, original_description=merchant_name, cleaned_description=merchant_name, amount=-amount, review_state="reviewed"))
+    db.session.commit()
+
+
+@pytest.mark.parametrize("days, expected", [(7, "weekly"), (14, "fortnightly"), (30, "monthly"), (91, "quarterly"), (365, "annual")])
+def test_recurrence_frequencies(app, days, expected):
+    with app.app_context():
+        account = make_account()
+        add_series(account, days)
+        suggestions = detect_recurring_candidates(db.session)
+        assert len(suggestions) == 1
+        assert suggestions[0]["frequency"] == expected
+
+
+def test_recurrence_accepts_variable_amounts_and_rejects_false_pattern(app):
+    with app.app_context():
+        account = make_account()
+        add_series(account, 30, [Decimal("9.50"), Decimal("10.00"), Decimal("10.50"), Decimal("10.00")])
+        suggestions = detect_recurring_candidates(db.session)
+        assert suggestions[0]["typical_amount"] == Decimal("10.00")
+        assert suggestions[0]["amount_variation"] == Decimal("1.00")
+
+        other = Merchant(name="Irregular Example")
+        db.session.add(other)
+        db.session.flush()
+        for offset in [0, 3, 47, 120]:
+            db.session.add(Transaction(account_id=account.id, merchant_id=other.id, posted_date=date(2025, 1, 1) + timedelta(days=offset), original_description="Irregular Example", cleaned_description="Irregular Example", amount=Decimal("-5.00")))
+        db.session.commit()
+        assert all(item["display_name"] != "Irregular Example" for item in detect_recurring_candidates(db.session))
+
+
+def test_get_routes_do_not_mutate_intelligence_rows(client, app):
+    with app.app_context():
+        account = make_account()
+        add_series(account, 30)
+        before = (RecurringCandidate.query.count(), RecurringBill.query.count(), MerchantAlias.query.count(), SavingsRecoveryEvent.query.count(), StatementImport.query.count(), [(row.id, row.notes, row.merchant_id, row.category_id) for row in Transaction.query.order_by(Transaction.id)])
+    for path in ["/", "/intelligence", "/transactions", "/recurring-candidates", "/savings-recovery", "/imports", "/accounts", "/reviews"]:
+        assert client.get(path).status_code == 200
+    with app.app_context():
+        after = (RecurringCandidate.query.count(), RecurringBill.query.count(), MerchantAlias.query.count(), SavingsRecoveryEvent.query.count(), StatementImport.query.count(), [(row.id, row.notes, row.merchant_id, row.category_id) for row in Transaction.query.order_by(Transaction.id)])
+        assert after == before
+
+
+def test_candidate_confirm_edit_and_reject(client, app):
+    with app.app_context():
+        account = make_account()
+        add_series(account, 14)
+        created, _ = refresh_candidates(db.session)
+        db.session.commit()
+        assert created == 1
+        candidate_id = RecurringCandidate.query.one().id
+    response = client.post(f"/recurring-candidates/{candidate_id}/confirm", data={"display_name": "Edited Schedule", "category_name": "Subscriptions", "frequency": "monthly", "expected_amount": "12.34", "amount_tolerance": "1.25", "expected_next_date": "2026-08-01", "household_flag": "household", "active": "on"}, follow_redirects=True)
+    assert response.status_code == 200
+    with app.app_context():
+        candidate = db.session.get(RecurringCandidate, candidate_id)
+        assert candidate.status == "confirmed"
+        assert candidate.display_name == "Edited Schedule"
+        assert RecurringBill.query.one().expected_amount == Decimal("12.34")
+
+        candidate.status = "pending"
+        db.session.commit()
+    client.post(f"/recurring-candidates/{candidate_id}/reject")
+    with app.app_context():
+        assert db.session.get(RecurringCandidate, candidate_id).status == "rejected"
+
+
+def test_mapping_preview_is_read_only_and_application_is_explicit(client, app):
+    with app.app_context():
+        account = make_account()
+        db.session.add(Transaction(account_id=account.id, posted_date=date(2026, 1, 1), original_description="Example Alias Purchase", cleaned_description="Example Alias Purchase", amount=Decimal("-10.00"), review_state="pending"))
+        db.session.commit()
+    preview = client.post("/merchant-mappings/preview", data={"alias_text": "Example Alias", "merchant_name": "Example Merchant", "category_name": "General"})
+    assert preview.status_code == 200
+    assert "would affect 1 pending" in preview.get_data(as_text=True)
+    with app.app_context():
+        assert MerchantAlias.query.count() == 0
+        assert Transaction.query.one().merchant_id is None
+    client.post("/merchant-mappings", data={"alias_text": "Example Alias", "merchant_name": "Example Merchant", "category_name": "General"})
+    with app.app_context():
+        assert MerchantAlias.query.count() == 1
+        assert Transaction.query.one().merchant_id is None
+    client.post("/merchant-mappings", data={"alias_text": "Example Alias", "merchant_name": "Example Merchant", "category_name": "General", "confirm_apply": "on"})
+    with app.app_context():
+        assert Transaction.query.one().merchant_id is not None
+
+
+def test_parse_money_uses_decimal_and_rejects_unsafe_values():
+    assert parse_money("10.235") == Decimal("10.24")
+    assert parse_money("0", non_negative=True) == Decimal("0.00")
+    for value in ["", "not money", "NaN", "Infinity", "-0.01"]:
+        with pytest.raises(ValueError):
+            parse_money(value, non_negative=value == "-0.01")
+
+
+def test_savings_event_history_calculates_recovery(app):
+    with app.app_context():
+        goal = SavingsGoal(name="Emergency Fund", target_amount=Decimal("1000.00"), current_amount=Decimal("1000.00"), repayment_per_payday=Decimal("100.00"))
+        db.session.add(goal)
+        db.session.flush()
+        add_recovery_event(db.session, goal, event_date=date(2026, 1, 1), amount=Decimal("400.00"), event_type="withdrawal", reason="Emergency")
+        add_recovery_event(db.session, goal, event_date=date(2026, 2, 1), amount=Decimal("150.00"), event_type="repayment", reason="Payday")
+        db.session.commit()
+        summary = savings_recovery_summary(db.session)
+        assert summary["current_amount"] == Decimal("750.00")
+        assert summary["total_withdrawals"] == Decimal("400.00")
+        assert summary["total_repaid"] == Decimal("150.00")
+        assert summary["gap"] == Decimal("250.00")
+        assert summary["estimated_paydays"] == 3
+
+
+def test_completeness_warning_and_period_filter(app):
+    with app.app_context():
+        account = make_account()
+        db.session.add(Transaction(account_id=account.id, posted_date=date(2026, 1, 15), original_description="Example", cleaned_description="Example", amount=Decimal("-1.00"), review_state="pending"))
+        db.session.commit()
+        period = resolve_period("custom", "2026-01-01", "2026-01-31")
+        report = data_completeness_report(db.session, period, today=date(2026, 3, 31))
+        assert period.start_date == date(2026, 1, 1)
+        assert period.end_date == date(2026, 1, 31)
+        assert report["complete"] is False
+        assert report["warnings"]

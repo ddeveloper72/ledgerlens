@@ -119,6 +119,18 @@ PayPal imports keep two deliberate modes:
 - Insurance Claims default to the `household` flag. An existing category/flag link is preserved if it has already been configured.
 - The dashboard reports monthly insurance spend, claims received, and net insurance cost.
 
+## Reviewable Financial Intelligence
+
+- Intelligence GET pages are read-only; detection and previews do not persist records.
+- Recurring suggestions show observation dates, typical amount, variation, frequency, next-date estimate, and confidence before confirmation.
+- Supported recurrence frequencies are weekly, fortnightly, monthly, quarterly, annual, and irregular.
+- Merchant mappings expose origin and status, with a read-only impact preview before optional application.
+- Savings recovery uses withdrawal, repayment, and adjustment events to calculate the current position.
+- Dashboard reporting periods include current month, previous month, last three months, and custom ranges.
+- Data-completeness warnings identify stale accounts, pending reviews, uncategorized rows, and partially represented periods.
+
+Financial intelligence is descriptive and may be incomplete; it is not definitive financial advice.
+
 ## Project Structure
 
 ```text

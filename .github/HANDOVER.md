@@ -189,3 +189,20 @@ Suggested commit message:
 - 89b6368 Fix formatting and gitignore structure
 - e4c210d Refactor import source model to bank plus bank_name metadata
 - c4962f3 Sanitized repository snapshot
+
+## 9) Phase 2B Reviewable Intelligence
+
+Implemented from `.github/Prompt.md`:
+- Removed database writes from GET routes, including intelligence, transactions, and imports
+- Split the former financial-intelligence module into focused merchant, recurrence, cash-flow, household analytics, savings, period, completeness, and money services
+- Added persistent recurring candidates with evidence, confidence, and confirm/reject/edit workflow
+- Added merchant mapping preview, origin/status management, and explicit application
+- Added strict Decimal money parsing for financial forms
+- Added savings recovery event history and payday recovery estimates
+- Added shared reporting periods and visible data-completeness warnings
+- Added runtime-compatible local SQLite column upgrades for existing installations
+
+Latest validation:
+- `61 passed`
+- `python run.py` returned HTTP 200
+- All primary GET pages returned HTTP 200 against the local development database
