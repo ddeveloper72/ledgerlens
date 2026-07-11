@@ -1,116 +1,21 @@
 {% extends 'base.html' %}
-
 {% block title %}Intelligence | LedgerLens{% endblock %}
-
 {% block content %}
 <section class="grid gap-6 md:grid-cols-5" data-stagger>
     <article class="panel md:col-span-2">
-        <h1 class="panel-title mb-2">Merchant Intelligence</h1>
-        <p class="text-sm text-slate-600 mb-4">Teach the system one mapping once, then reuse it automatically on future
-            imports.</p>
-
-        <form action="{{ url_for('main.intelligence') }}" method="post" class="space-y-4">
-            <label for="alias_text" class="block text-sm font-semibold text-slate-700">Raw Alias</label>
-            <input id="alias_text" name="alias_text" type="text" class="file-input"
-                placeholder="Example: PAYPAL *MICROSOFT" required>
-
-            <label for="merchant_name" class="block text-sm font-semibold text-slate-700">Merchant</label>
-            <input id="merchant_name" name="merchant_name" type="text" class="file-input"
-                placeholder="Example: Microsoft" required>
-
-            <label for="category_name" class="block text-sm font-semibold text-slate-700">Category</label>
-            <input id="category_name" name="category_name" type="text" class="file-input"
-                placeholder="Example: Subscriptions" required>
-
-            <label class="inline-flex items-center gap-2 text-sm text-slate-700">
-                <input type="checkbox" name="apply_existing">
-                Apply to current pending transactions
-            </label>
-
-            <button type="submit" class="primary-btn">Save Mapping</button>
+        <h1 class="panel-title mb-2">Merchant Mapping Preview</h1>
+        <p class="text-sm text-slate-600 mb-4">Preview impact first. Transactions change only after explicit confirmation.</p>
+        <form action="{{ url_for('main.preview_merchant_mapping') }}" method="post" class="space-y-4">
+            <label for="alias_text" class="block text-sm font-semibold">Raw Alias</label><input id="alias_text" name="alias_text" class="file-input" required>
+            <label for="merchant_name" class="block text-sm font-semibold">Merchant</label><input id="merchant_name" name="merchant_name" class="file-input" required>
+            <label for="category_name" class="block text-sm font-semibold">Category</label><input id="category_name" name="category_name" class="file-input" required>
+            <button type="submit" class="primary-btn">Preview Impact</button>
         </form>
+        {% if preview %}<div class="mt-5 p-4 rounded-lg bg-slate-50 border border-slate-200"><p class="text-sm mb-3">This mapping would affect {{ preview.count }} pending transaction(s).</p><form action="{{ url_for('main.save_merchant_mapping') }}" method="post" class="space-y-3"><input type="hidden" name="alias_text" value="{{ preview.alias_text }}"><input type="hidden" name="merchant_name" value="{{ preview.merchant_name }}"><input type="hidden" name="category_name" value="{{ preview.category_name }}"><label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="confirm_apply"> Confirm and apply to previewed transactions</label><button type="submit" class="primary-btn">Save Confirmed Mapping</button></form></div>{% endif %}
     </article>
-
-    <article class="panel md:col-span-3">
-        <div class="panel-head">
-            <h2 class="panel-title">Merchant Journey Preview</h2>
-        </div>
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-                <thead>
-                    <tr>
-                        <th>Description</th>
-                        <th>Merchant</th>
-                        <th>Category</th>
-                        <th>Subtype</th>
-                        <th>Recurrence</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for item in merchant_journey %}
-                    <tr>
-                        <td>{{ item.transaction.cleaned_description }}</td>
-                        <td>{{ item.merchant_name }}</td>
-                        <td>{{ item.labels.domain }}</td>
-                        <td>{{ item.labels.subtype }}</td>
-                        <td>{{ item.labels.recurrence }}</td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="5" class="text-center py-10 text-slate-500">No transactions available for
-                            intelligence preview.</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </article>
+    <article class="panel md:col-span-3"><div class="panel-head"><h2 class="panel-title">Merchant Journey Preview</h2></div><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Description</th><th>Merchant</th><th>Category</th><th>Subtype</th><th>Recurrence</th></tr></thead><tbody>{% for item in merchant_journey %}<tr><td>{{ item.transaction.cleaned_description }}</td><td>{{ item.merchant_name }}</td><td>{{ item.labels.domain }}</td><td>{{ item.labels.subtype }}</td><td>{{ item.labels.recurrence }}</td></tr>{% else %}<tr><td colspan="5" class="text-center py-10 text-slate-500">No transactions available.</td></tr>{% endfor %}</tbody></table></div></article>
 </section>
-
-<section class="grid gap-6 md:grid-cols-2 mt-8" data-stagger>
-    <article class="panel">
-        <h2 class="panel-title mb-3">Recurring Detection</h2>
-        <ul class="space-y-2 text-sm">
-            {% for item in recurring_expected %}
-            <li class="summary-row">
-                <span>{{ item.expected_day }} · {{ item.merchant_name }}</span>
-                <span>{{ '%.2f'|format(item.expected_amount) }}</span>
-            </li>
-            {% else %}
-            <li class="text-slate-500">No recurring candidates yet.</li>
-            {% endfor %}
-        </ul>
-    </article>
-
-    <article class="panel">
-        <h2 class="panel-title mb-3">Missing This Month</h2>
-        <ul class="space-y-2 text-sm">
-            {% for item in recurring_missing %}
-            <li class="summary-row">
-                <span>{{ item.expected_day }} · {{ item.merchant_name }}</span>
-                <span class="text-rose-700">Missing</span>
-            </li>
-            {% else %}
-            <li class="text-slate-500">No missing recurring payments currently.</li>
-            {% endfor %}
-        </ul>
-    </article>
-</section>
-
-<section class="panel mt-8" data-fade-in>
-    <div class="panel-head">
-        <h2 class="panel-title">Cash Flow Timeline</h2>
-    </div>
-    <ul class="space-y-2 text-sm">
-        {% for event in cash_calendar %}
-        <li class="summary-row">
-            <span>{{ event.date }} · {{ event.label }}</span>
-            <span class="{{ 'text-emerald-700' if event.flow == 'in' else 'text-rose-700' }}">{{
-                '%.2f'|format(event.amount) }}</span>
-        </li>
-        {% else %}
-        <li class="text-slate-500">No events in current month.</li>
-        {% endfor %}
-    </ul>
-</section>
+<section class="panel mt-8" data-fade-in><div class="panel-head"><h2 class="panel-title">Saved Merchant Mappings</h2></div><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Alias</th><th>Merchant</th><th>Origin</th><th>Status</th><th>Manage</th></tr></thead><tbody>{% for alias in merchant_aliases %}<tr><td>{{ alias.alias }}</td><td>{{ alias.merchant.name }}</td><td>{{ alias.origin }}</td><td>{{ 'Active' if alias.active else 'Disabled' }}</td><td><form action="{{ url_for('main.update_merchant_mapping', alias_id=alias.id) }}" method="post" class="review-form-grid"><input class="file-input" name="alias_text" value="{{ alias.alias }}"><input class="file-input" name="merchant_name" value="{{ alias.merchant.name }}"><label class="text-sm"><input type="checkbox" name="active" {{ 'checked' if alias.active else '' }}> Active</label><button class="primary-btn" type="submit">Update</button></form><form action="{{ url_for('main.delete_merchant_mapping', alias_id=alias.id) }}" method="post" class="mt-2"><button class="pill-link" type="submit">Delete</button></form></td></tr>{% else %}<tr><td colspan="5" class="text-center py-6 text-slate-500">No saved mappings.</td></tr>{% endfor %}</tbody></table></div></section>
+<section class="grid gap-6 md:grid-cols-2 mt-8" data-stagger><article class="panel"><div class="panel-head"><h2 class="panel-title">Confirmed Recurring Payments</h2><a class="pill-link" href="{{ url_for('main.recurring_candidates') }}">Review candidates</a></div><ul class="space-y-2 text-sm">{% for item in recurring_expected %}<li class="summary-row"><span>{{ item.expected_day }} &middot; {{ item.merchant_name }}</span><span>{{ '%.2f'|format(item.expected_amount) }}</span></li>{% else %}<li class="text-slate-500">No confirmed recurring payments.</li>{% endfor %}</ul></article><article class="panel"><h2 class="panel-title mb-3">Missing</h2><ul class="space-y-2 text-sm">{% for item in recurring_missing %}<li class="summary-row"><span>{{ item.expected_day }} &middot; {{ item.merchant_name }}</span><span class="text-rose-700">Missing</span></li>{% else %}<li class="text-slate-500">No confirmed payments are currently missing.</li>{% endfor %}</ul></article></section>
+<section class="panel mt-8" data-fade-in><div class="panel-head"><h2 class="panel-title">Cash Flow Evidence</h2></div><ul class="space-y-2 text-sm">{% for event in cash_calendar %}<li class="summary-row"><span>{{ event.date }} &middot; {{ event.label }}</span><span class="{{ 'text-emerald-700' if event.flow == 'in' else 'text-rose-700' }}">{{ '%.2f'|format(event.amount) }}</span></li>{% else %}<li class="text-slate-500">No events in the current period.</li>{% endfor %}</ul></section>
 {% endblock %}
