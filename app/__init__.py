@@ -165,6 +165,8 @@ def _apply_runtime_phase2b_updates():
             "excluded_from_analysis": "BOOLEAN NOT NULL DEFAULT 0",
             "exclusion_reason": "VARCHAR(120)",
             "excluded_at": "DATETIME",
+            "internal_transfer": "BOOLEAN NOT NULL DEFAULT 0",
+            "internal_transfer_reason": "VARCHAR(120)",
         },
     }
     changed = False

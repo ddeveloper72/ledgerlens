@@ -113,6 +113,8 @@ PayPal imports keep two deliberate modes:
 
 Legacy PayPal statements may contain internal funding, conversion, and authorization rows. On the Accounts page, use **Exclude Detected Internal Rows** to preserve those raw transactions while removing them from balances, reviews, recurrence detection, completeness counts, and analytics. Each exclusion records a reason and timestamp. **Restore Excluded Rows** reverses the operation.
 
+Confirmed Credit Union internal movements remain balance-affecting ledger entries but are excluded from household income, spending, cash-flow analytics, recurrence detection, and review queues. `MNGTFEE` is treated as personal earmarked Savings; `EFT DISBUR` is treated as a personal shares-account Transfer. The Accounts page provides an explicit maintenance action, and future imports apply the same rules automatically.
+
 ## Category Automation
 
 - Tax includes TV Licence, Local Property Tax (LPT), property tax, car tax, and motor tax.

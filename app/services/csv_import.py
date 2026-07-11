@@ -3,7 +3,8 @@ import io
 
 from app.extensions import db
 from app.models import Account, ImportBatch, StatementImport, Transaction
-from app.services.categorization import assign_category
+from app.services.categorization import assign_category, get_or_create_category
+from app.services.credit_union_internal import credit_union_internal_rule
 from app.services.imports.credit_union_import import (
     infer_credit_union_context,
     parse_hsecu_pdf_text,
@@ -277,6 +278,17 @@ def import_transactions(
         )
         category_id = None if category.name == "Uncategorized" else category.id
         household_flag = row["household_flag"]
+        review_state = "pending"
+        internal_transfer = False
+        internal_transfer_reason = None
+        credit_union_rule = credit_union_internal_rule(row["cleaned_description"])
+        if credit_union_rule and "credit union" in target_account.name.lower():
+            category = get_or_create_category(db.session, credit_union_rule["category"])
+            category_id = category.id
+            household_flag = "personal"
+            review_state = "reviewed"
+            internal_transfer = True
+            internal_transfer_reason = credit_union_rule["reason"]
         if category.name == "Insurance Claims" and household_flag == "unknown":
             household_flag = "household"
 
@@ -291,7 +303,9 @@ def import_transactions(
             amount=row["amount"],
             household_flag=household_flag,
             notes=row["notes"],
-            review_state="pending",
+            review_state=review_state,
+            internal_transfer=internal_transfer,
+            internal_transfer_reason=internal_transfer_reason,
         )
 
         db.session.add(transaction)

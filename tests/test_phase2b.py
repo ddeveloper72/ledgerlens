@@ -1,7 +1,9 @@
+import io
 from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
+from werkzeug.datastructures import FileStorage
 
 from app.extensions import db
 from app.models import (
@@ -9,6 +11,8 @@ from app.models import (
     SavingsGoal, SavingsRecoveryEvent, StatementImport, Transaction, User,
 )
 from app.services.completeness_service import data_completeness_report
+from app.services.credit_union_internal import mark_credit_union_internal_movements
+from app.services.csv_import import import_transactions
 from app.services.money import parse_money
 from app.services.imports.paypal_import import (
     exclude_legacy_paypal_internal_rows,
@@ -224,3 +228,53 @@ def test_paypal_exclusion_action_removes_internal_rows_from_balances_and_reviews
     reviews = client.get("/reviews").get_data(as_text=True)
     assert "PayPal Card Deposit" not in reviews
     assert "Example Purchase" in reviews
+
+
+def test_credit_union_internal_movements_are_classified_without_becoming_spend(app):
+    with app.app_context():
+        user = User(name="Credit Union User")
+        db.session.add(user)
+        db.session.flush()
+        account = Account(user_id=user.id, name="Credit Union", account_type="savings")
+        db.session.add(account)
+        db.session.flush()
+        earmark = Transaction(account_id=account.id, posted_date=date(2026, 1, 1), original_description="MNGTFEE", cleaned_description="MNGTFEE", amount=Decimal("100.00"), review_state="pending")
+        disbursement = Transaction(account_id=account.id, posted_date=date(2026, 1, 2), original_description="EFT DISBUR", cleaned_description="EFT DISBUR", amount=Decimal("-40.00"), review_state="pending")
+        db.session.add_all([earmark, disbursement])
+        db.session.commit()
+
+        assert mark_credit_union_internal_movements(db.session) == 2
+        db.session.commit()
+        assert earmark.internal_transfer is True
+        assert earmark.category.name == "Savings"
+        assert disbursement.internal_transfer is True
+        assert disbursement.category.name == "Transfers"
+        assert all(row.household_flag == "personal" for row in [earmark, disbursement])
+        assert all(row.review_state == "reviewed" for row in [earmark, disbursement])
+        assert mark_credit_union_internal_movements(db.session) == 0
+
+
+def test_future_credit_union_import_marks_internal_movement(app):
+    with app.app_context():
+        user = User(name="Import User")
+        db.session.add(user)
+        db.session.flush()
+        account = Account(user_id=user.id, name="Credit Union", account_type="savings")
+        db.session.add(account)
+        db.session.commit()
+        payload = FileStorage(stream=io.BytesIO(b"date,description,amount\n2026-01-01,MNGTFEE,100.00\n"), filename="generic-credit-union.csv")
+        result = import_transactions(payload, account.id)
+        assert result["created"] == 1
+        transaction = Transaction.query.one()
+        assert transaction.internal_transfer is True
+        assert transaction.category.name == "Savings"
+        assert transaction.review_state == "reviewed"
+
+
+def test_dashboard_does_not_count_internal_savings_transfer_as_income(client, app):
+    with app.app_context():
+        account = make_account()
+        db.session.add(Transaction(account_id=account.id, posted_date=date.today(), original_description="MNGTFEE", cleaned_description="MNGTFEE", amount=Decimal("500.00"), internal_transfer=True, internal_transfer_reason="Credit Union earmarked savings transfer", review_state="reviewed"))
+        db.session.commit()
+    body = client.get("/").get_data(as_text=True)
+    assert "Monthly Income</p>\n        <p class=\"metric-value\">0.00" in body

@@ -28,7 +28,7 @@ def detect_recurring_candidates(session, min_occurrences=3):
     """Return evidence-rich suggestions without writing to the database."""
     rows = (
         session.query(Transaction)
-        .filter(Transaction.amount < 0, Transaction.excluded_from_analysis.is_(False))
+        .filter(Transaction.amount < 0, Transaction.excluded_from_analysis.is_(False), Transaction.internal_transfer.is_(False))
         .order_by(Transaction.posted_date.asc(), Transaction.id.asc())
         .all()
     )

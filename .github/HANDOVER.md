@@ -213,3 +213,9 @@ Latest validation:
 - Internal bank/card deposits, conversions, authorizations, transfers, and withdrawals remain stored with an audit reason and timestamp
 - Excluded rows are omitted from balances, review queues, categorization backfills, recurrence detection, merchant mapping, cash flow, analytics, and completeness reporting
 - Applied locally after schema upgrade: 60 of 83 PayPal wallet rows excluded, leaving 23 analysis-relevant rows; no raw rows deleted
+
+### Credit Union internal movements
+- Added auditable internal-transfer fields that preserve account-balance effects while removing transfers from income/spending analytics
+- `MNGTFEE` maps to personal Savings and `EFT DISBUR` maps to personal Transfers
+- Future Credit Union imports apply these user-confirmed rules automatically
+- Applied locally: 25 MNGTFEE and 44 EFT DISBUR rows marked reviewed internal transfers; no rows deleted

@@ -93,6 +93,8 @@ class Transaction(db.Model):
     excluded_from_analysis = db.Column(db.Boolean, nullable=False, default=False)
     exclusion_reason = db.Column(db.String(120), nullable=True)
     excluded_at = db.Column(db.DateTime, nullable=True)
+    internal_transfer = db.Column(db.Boolean, nullable=False, default=False)
+    internal_transfer_reason = db.Column(db.String(120), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
 
     merchant = db.relationship("Merchant")

@@ -28,6 +28,7 @@ from app.services.imports.paypal_import import (
     exclude_legacy_paypal_internal_rows,
     restore_excluded_paypal_internal_rows,
 )
+from app.services.credit_union_internal import mark_credit_union_internal_movements
 from app.services.money import parse_money
 from app.services.period_service import apply_transaction_period, resolve_period
 from app.services.recurrence_service import (
@@ -182,9 +183,9 @@ def dashboard():
         flash(str(exc), "error")
         period = resolve_period()
     total_transactions = Transaction.query.filter_by(excluded_from_analysis=False).count()
-    pending_transactions = Transaction.query.filter_by(review_state="pending", excluded_from_analysis=False).count()
+    pending_transactions = Transaction.query.filter_by(review_state="pending", excluded_from_analysis=False, internal_transfer=False).count()
     month_transactions = apply_transaction_period(
-        Transaction.query.filter_by(excluded_from_analysis=False).order_by(Transaction.posted_date.desc(), Transaction.id.desc()),
+        Transaction.query.filter_by(excluded_from_analysis=False, internal_transfer=False).order_by(Transaction.posted_date.desc(), Transaction.id.desc()),
         period,
         Transaction,
     ).all()
@@ -217,6 +218,7 @@ def dashboard():
         Transaction.query.outerjoin(Category)
         .filter(
             Transaction.excluded_from_analysis.is_(False),
+            Transaction.internal_transfer.is_(False),
             db.or_(
                 Transaction.category_id.is_(None),
                 Category.name == "Uncategorized",
@@ -450,12 +452,14 @@ def accounts():
         )
         transaction_count = Transaction.query.filter_by(account_id=account.id, excluded_from_analysis=False).count()
         excluded_count = Transaction.query.filter_by(account_id=account.id, excluded_from_analysis=True).count()
+        internal_transfer_count = Transaction.query.filter_by(account_id=account.id, internal_transfer=True).count()
         account_rows.append(
             {
                 "account": account,
                 "balance": balance,
                 "transaction_count": transaction_count,
                 "excluded_count": excluded_count,
+                "internal_transfer_count": internal_transfer_count,
             }
         )
 
@@ -480,6 +484,15 @@ def restore_paypal_internal_rows():
     return redirect(url_for("main.accounts"))
 
 
+@bp.route("/accounts/credit-union-internal/mark", methods=["POST"])
+def mark_credit_union_internal_rows():
+    """Explicitly mark user-confirmed Credit Union ledger movements as internal transfers."""
+    updated = mark_credit_union_internal_movements(db.session)
+    db.session.commit()
+    flash(f"Marked {updated} Credit Union movement(s) as internal transfers.", "success")
+    return redirect(url_for("main.accounts"))
+
+
 @bp.route("/transactions")
 def transactions():
     """Render imported transactions without mutating reconciliation metadata."""
@@ -497,12 +510,12 @@ def transactions():
 def reviews():
     """Show transactions that still need category/flag review."""
     pending_transactions = (
-        Transaction.query.filter_by(review_state="pending", excluded_from_analysis=False)
+        Transaction.query.filter_by(review_state="pending", excluded_from_analysis=False, internal_transfer=False)
         .order_by(Transaction.posted_date.desc(), Transaction.id.desc())
         .all()
     )
     reviewed_transactions = (
-        Transaction.query.filter_by(review_state="reviewed", excluded_from_analysis=False)
+        Transaction.query.filter_by(review_state="reviewed", excluded_from_analysis=False, internal_transfer=False)
         .order_by(Transaction.posted_date.desc(), Transaction.id.desc())
         .limit(100)
         .all()
@@ -560,6 +573,7 @@ def bulk_update_reviews():
             account_id=account_id,
             review_state="pending",
             excluded_from_analysis=False,
+            internal_transfer=False,
         )
         .filter(Transaction.amount == amount)
         .all()
@@ -589,7 +603,7 @@ def bulk_update_reviews():
     if household_flag not in HOUSEHOLD_FLAGS:
         household_flag = "unknown"
 
-    targets = Transaction.query.filter(Transaction.id.in_(target_ids), Transaction.excluded_from_analysis.is_(False)).all()
+    targets = Transaction.query.filter(Transaction.id.in_(target_ids), Transaction.excluded_from_analysis.is_(False), Transaction.internal_transfer.is_(False)).all()
     for target in targets:
         target.category_id = category.id if category else None
         target.household_flag = household_flag
@@ -626,7 +640,7 @@ def auto_align_reviews():
 @bp.route("/reviews/<int:transaction_id>", methods=["POST"])
 def update_review(transaction_id):
     """Persist category, household flag, and review-state updates for one transaction."""
-    transaction = Transaction.query.filter_by(id=transaction_id, excluded_from_analysis=False).first()
+    transaction = Transaction.query.filter_by(id=transaction_id, excluded_from_analysis=False, internal_transfer=False).first()
     if not transaction:
         flash("Transaction not found.", "error")
         return redirect(url_for("main.reviews"))
@@ -660,12 +674,13 @@ def update_review(transaction_id):
     if household_flag not in HOUSEHOLD_FLAGS:
         household_flag = "unknown"
 
-    query = Transaction.query.filter_by(id=transaction.id, excluded_from_analysis=False)
+    query = Transaction.query.filter_by(id=transaction.id, excluded_from_analysis=False, internal_transfer=False)
     if apply_scope == "matching_description":
         query = Transaction.query.filter_by(
             account_id=transaction.account_id,
             cleaned_description=transaction.cleaned_description,
             excluded_from_analysis=False,
+            internal_transfer=False,
         )
 
     targets = query.all()

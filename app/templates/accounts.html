@@ -41,6 +41,7 @@
                         <th>Type</th>
                         <th>Transactions</th>
                         <th>Excluded</th>
+                        <th>Internal transfers</th>
                         <th class="text-right">Balance</th>
                     </tr>
                 </thead>
@@ -51,17 +52,22 @@
                         <td>{{ row.account.account_type }}</td>
                         <td>{{ row.transaction_count }}</td>
                         <td>{{ row.excluded_count }}</td>
+                        <td>{{ row.internal_transfer_count }}</td>
                         <td class="text-right">{{ '%.2f'|format(row.balance) }}</td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="5" class="text-center py-10 text-slate-500">No accounts created yet.</td>
+                        <td colspan="6" class="text-center py-10 text-slate-500">No accounts created yet.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
     </article>
+</section>
+
+<section class="panel mt-8" data-fade-in>
+    <div class="panel-head"><div><h2 class="panel-title">Credit Union Internal Movements</h2><p class="text-sm text-slate-600">Mark MNGTFEE as earmarked Savings and EFT DISBUR as Transfers. Both remain in the account balance but are removed from income, spending, reviews, and analytics.</p></div><form action="{{ url_for('main.mark_credit_union_internal_rows') }}" method="post"><button class="primary-btn" type="submit">Mark Confirmed CU Movements</button></form></div>
 </section>
 
 <section class="panel mt-8" data-fade-in>
