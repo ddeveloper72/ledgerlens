@@ -143,10 +143,36 @@ Confirmed Credit Union internal movements remain balance-affecting ledger entrie
 - Supported recurrence frequencies are weekly, fortnightly, monthly, quarterly, annual, and irregular.
 - Merchant mappings expose origin and status, with a read-only impact preview before optional application.
 - Savings recovery uses withdrawal, repayment, and adjustment events to calculate the current position.
-- Dashboard reporting periods include current month, previous month, last three months, and custom ranges.
-- Data-completeness warnings identify stale accounts, pending reviews, uncategorized rows, and partially represented periods.
+- Dashboard reporting periods include current month, previous month, last three months, year to date, and custom ranges.
+- Data-completeness warnings identify per-account imported ranges, stale accounts, possible date gaps, excluded rows, pending reviews, uncategorized rows, and partially represented periods.
 
 Financial intelligence is descriptive and may be incomplete; it is not definitive financial advice.
+
+## Architecture
+
+```text
+Import
+  ↓
+Normalise
+  ↓
+Review
+  ↓
+Enrich
+  ↓
+Analyse
+  ↓
+Advise (not yet implemented)
+```
+
+The advisory layer is intentionally not implemented. Current outputs are user-reviewed records, observations, estimates, and explainable calculations—not regulated financial advice.
+
+## Current Limitations
+
+- LedgerLens is a local, single-household development application without authentication or cloud deployment.
+- Imports require supported CSV structures and explicit user review.
+- Recurrence detection needs sufficient history and remains a suggestion until confirmed.
+- Completeness checks can identify likely coverage gaps but cannot prove that every statement has been imported.
+- Forecasts depend on user-maintained schedules and are estimates rather than guarantees.
 
 ## Changing Payment References
 

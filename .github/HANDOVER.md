@@ -257,3 +257,10 @@ Latest validation:
 - Moved recurring deactivation orchestration into recurrence_service.py
 - Added explicit `backfill-paypal-descriptions` CLI maintenance
 - Created pre-upgrade backup `ledgerlens_dev.pre_phase3a_20260712.sqlite3`
+
+## 11) Prompt 3 Course-Correction Plan
+
+- Re-audit current routes, services, models, templates, migrations, tests, and documentation before editing.
+- Preserve existing read-only GET, reviewed recurrence, event-history savings, migration, CSRF, and forecasting work.
+- Close remaining gaps in monetary parsing, recurrence evidence, reporting periods, and data-completeness reporting.
+- Add generic regression tests, update documentation, run the full suite, and scan staged changes for private data before committing.
