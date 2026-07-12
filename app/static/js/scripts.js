@@ -133,7 +133,25 @@ function wireReviewCategoryInterlock() {
     });
 }
 
+function wireCsrfProtection() {
+    const token = document.querySelector("meta[name='csrf-token']")?.content;
+    if (!token) {
+        return;
+    }
+    document.querySelectorAll("form[method='post'], form[method='POST']").forEach((form) => {
+        if (form.querySelector("input[name='csrf_token']")) {
+            return;
+        }
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = "csrf_token";
+        input.value = token;
+        form.appendChild(input);
+    });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+    wireCsrfProtection();
     animateEntrance();
     wireTransactionFilter();
     wireDescriptionToggles();

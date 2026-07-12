@@ -5,6 +5,7 @@ from pathlib import Path
 class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "CHANGE_ME_IN_ENV")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    WTF_CSRF_ENABLED = True
 
     default_db_path = Path("instance") / "ledgerlens_dev.sqlite3"
     SQLALCHEMY_DATABASE_URI = os.environ.get(
@@ -15,3 +16,4 @@ class Config:
 class TestConfig(Config):
     TESTING = True
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+    WTF_CSRF_ENABLED = False

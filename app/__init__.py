@@ -3,10 +3,8 @@ import os
 import click
 from dotenv import load_dotenv
 from flask import Flask
-from sqlalchemy import inspect, text
-
 from app.config import Config
-from app.extensions import db
+from app.extensions import csrf, db, migrate
 
 
 def create_app(config_class=Config):
@@ -25,17 +23,23 @@ def create_app(config_class=Config):
     os.makedirs(app.instance_path, exist_ok=True)
 
     db.init_app(app)
+    migrate.init_app(app, db)
+    csrf.init_app(app)
 
     from app.models import (  # noqa: F401
         Account,
         Category,
         ImportBatch,
+        IncomeSchedule,
         Merchant,
         MerchantAlias,
         RecurringCandidate,
         RecurringBill,
+        OneOffForecastEvent,
+        PlannedCommitment,
         SavingsGoal,
         SavingsRecoveryEvent,
+        SinkingFundProvision,
         StatementImport,
         Transaction,
         User,
@@ -43,17 +47,6 @@ def create_app(config_class=Config):
     from app.routes.main import bp as main_bp
 
     app.register_blueprint(main_bp)
-
-    # Local development convenience: create tables if they do not exist yet.
-    with app.app_context():
-        db.create_all()
-        _apply_runtime_statement_import_updates()
-        _apply_runtime_phase2b_updates()
-
-    @app.cli.command("init-db")
-    def init_db_command():
-        db.create_all()
-        print("Database tables created.")
 
     @app.cli.command("backfill-categories")
     def backfill_categories_command():
@@ -118,77 +111,13 @@ def create_app(config_class=Config):
         db.session.commit()
         click.echo(f"Known-payee canonicalization complete: {updated} transaction(s) updated.")
 
-    return app
+    @app.cli.command("backfill-paypal-descriptions")
+    def backfill_paypal_descriptions_command():
+        """Explicitly enrich matching bank rows from retained legacy PayPal descriptions."""
+        from app.services.imports.paypal_import import backfill_paypal_alternate_descriptions
 
-
-def _apply_runtime_statement_import_updates():
-    """Apply lightweight SQLite schema/data updates for StatementImport compatibility."""
-    inspector = inspect(db.engine)
-    table_names = set(inspector.get_table_names())
-    if "statement_import" not in table_names:
-        return
-
-    columns = {column["name"] for column in inspector.get_columns("statement_import")}
-
-    if "bank_name" not in columns:
-        db.session.execute(text("ALTER TABLE statement_import ADD COLUMN bank_name VARCHAR(40)"))
-
-    db.session.execute(
-        text(
-            "UPDATE statement_import SET declared_source = 'bank' WHERE declared_source = 'aib_bank'"
-        )
-    )
-    db.session.execute(
-        text(
-            "UPDATE statement_import SET detected_source = 'bank' WHERE detected_source IN ('generic', 'aib_bank')"
-        )
-    )
-    db.session.execute(
-        text(
-            "UPDATE statement_import SET bank_name = 'aib' WHERE declared_source = 'bank' AND (bank_name IS NULL OR bank_name = '')"
-        )
-    )
-    db.session.commit()
-
-
-def _apply_runtime_phase2b_updates():
-    """Add Phase 2B columns to existing local SQLite databases without destructive changes."""
-    inspector = inspect(db.engine)
-    table_names = set(inspector.get_table_names())
-    additions = {
-        "merchant_alias": {
-            "origin": "VARCHAR(20) NOT NULL DEFAULT 'manual'",
-            "active": "BOOLEAN NOT NULL DEFAULT 1",
-        },
-        "recurring_bill": {
-            "display_name": "VARCHAR(120)",
-            "amount_tolerance": "NUMERIC(12, 2) NOT NULL DEFAULT 0",
-            "expected_next_date": "DATE",
-            "household_flag": "VARCHAR(20) NOT NULL DEFAULT 'unknown'",
-            "active": "BOOLEAN NOT NULL DEFAULT 1",
-        },
-        "savings_goal": {
-            "repayment_per_payday": "NUMERIC(12, 2)",
-        },
-        "transaction": {
-            "excluded_from_analysis": "BOOLEAN NOT NULL DEFAULT 0",
-            "exclusion_reason": "VARCHAR(120)",
-            "excluded_at": "DATETIME",
-            "internal_transfer": "BOOLEAN NOT NULL DEFAULT 0",
-            "internal_transfer_reason": "VARCHAR(120)",
-        },
-    }
-    changed = False
-    for table_name, columns in additions.items():
-        if table_name not in table_names:
-            continue
-        existing = {column["name"] for column in inspector.get_columns(table_name)}
-        for column_name, sql_type in columns.items():
-            if column_name in existing:
-                continue
-            db.session.execute(
-                text(f'ALTER TABLE "{table_name}" ADD COLUMN "{column_name}" {sql_type}')
-            )
-            changed = True
-    if changed:
+        updated = backfill_paypal_alternate_descriptions(db.session)
         db.session.commit()
+        click.echo(f"PayPal description backfill complete: {updated} transaction(s) updated.")
+
+    return app

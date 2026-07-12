@@ -162,3 +162,59 @@ class SavingsRecoveryEvent(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
 
     savings_goal = db.relationship("SavingsGoal", backref="recovery_events")
+
+
+class IncomeSchedule(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    display_name = db.Column(db.String(120), nullable=False)
+    account_id = db.Column(db.Integer, db.ForeignKey("account.id"), nullable=False)
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+    frequency = db.Column(db.String(20), nullable=False)
+    next_expected_date = db.Column(db.Date, nullable=False)
+    active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+
+    account = db.relationship("Account")
+
+
+class PlannedCommitment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    display_name = db.Column(db.String(120), nullable=False)
+    category_id = db.Column(db.Integer, db.ForeignKey("category.id"), nullable=True)
+    household_flag = db.Column(db.String(20), nullable=False, default="household")
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+    frequency = db.Column(db.String(20), nullable=False)
+    next_expected_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=True)
+    active = db.Column(db.Boolean, nullable=False, default=True)
+    commitment_type = db.Column(db.String(20), nullable=False, default="other")
+    created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+
+    category = db.relationship("Category")
+
+
+class OneOffForecastEvent(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    display_name = db.Column(db.String(120), nullable=False)
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+    event_date = db.Column(db.Date, nullable=False)
+    direction = db.Column(db.String(10), nullable=False)
+    category_id = db.Column(db.Integer, db.ForeignKey("category.id"), nullable=True)
+    household_flag = db.Column(db.String(20), nullable=False, default="household")
+    status = db.Column(db.String(20), nullable=False, default="planned")
+    created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+
+    category = db.relationship("Category")
+
+
+class SinkingFundProvision(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    display_name = db.Column(db.String(120), nullable=False)
+    target_amount = db.Column(db.Numeric(12, 2), nullable=False)
+    due_date = db.Column(db.Date, nullable=False)
+    amount_reserved = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    savings_goal_id = db.Column(db.Integer, db.ForeignKey("savings_goal.id"), nullable=True)
+    active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+
+    savings_goal = db.relationship("SavingsGoal")
