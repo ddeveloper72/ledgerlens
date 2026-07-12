@@ -8,7 +8,7 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from app.extensions import db
 from app.models import (
     Account, Category, CategoryFlagRule, ImportBatch, Merchant, MerchantAlias,
-    RecurringCandidate, SavingsGoal, Transaction, User,
+    RecurringBill, RecurringCandidate, SavingsGoal, Transaction, User,
 )
 from app.services.csv_import import (
     CSVImportError,
@@ -33,8 +33,9 @@ from app.services.duplicate_maintenance import exclude_verified_duplicates, veri
 from app.services.money import parse_money
 from app.services.period_service import apply_transaction_period, resolve_period
 from app.services.recurrence_service import (
-    FREQUENCIES, confirm_candidate, refresh_candidates, recurring_expected_vs_missing,
-    reject_candidate,
+    FREQUENCIES, confirm_candidate, deactivate_candidate_and_bill,
+    deactivate_recurring_bill as deactivate_bill_service, refresh_candidates,
+    recurring_expected_vs_missing,
 )
 from app.services.savings_service import add_recovery_event, savings_recovery_summary
 
@@ -353,12 +354,7 @@ def refresh_recurring_candidates():
 @bp.route("/recurring-candidates/<int:candidate_id>/reject", methods=["POST"])
 def reject_recurring_candidate(candidate_id):
     candidate = db.get_or_404(RecurringCandidate, candidate_id)
-    reject_candidate(candidate)
-    from app.models import RecurringBill
-
-    bill = RecurringBill.query.filter_by(merchant_id=candidate.merchant_id).first()
-    if bill:
-        bill.active = False
+    deactivate_candidate_and_bill(db.session, candidate)
     db.session.commit()
     flash("Recurring candidate rejected and its alert deactivated.", "success")
     return redirect(url_for("main.recurring_candidates"))
@@ -384,16 +380,8 @@ def confirm_recurring_candidate(candidate_id):
 @bp.route("/recurring-bills/<int:bill_id>/deactivate", methods=["POST"])
 def deactivate_recurring_bill(bill_id):
     """Deactivate a false recurring alert without changing its source transactions."""
-    from datetime import datetime
-    from app.models import RecurringBill
-
     bill = db.get_or_404(RecurringBill, bill_id)
-    bill.active = False
-    candidate = RecurringCandidate.query.filter_by(merchant_id=bill.merchant_id).first()
-    if candidate:
-        candidate.active = False
-        candidate.status = "rejected"
-        candidate.reviewed_at = datetime.now()
+    deactivate_bill_service(db.session, bill)
     db.session.commit()
     flash("Recurring alert deactivated. Source transactions were not changed.", "success")
     return redirect(request.referrer or url_for("main.recurring_candidates"))

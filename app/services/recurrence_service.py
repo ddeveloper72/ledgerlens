@@ -101,6 +101,28 @@ def reject_candidate(candidate):
     candidate.reviewed_at = datetime.now()
 
 
+def deactivate_candidate_and_bill(session, candidate):
+    """Reject a candidate and deactivate its confirmed bill as one service operation."""
+    reject_candidate(candidate)
+    bill = session.query(RecurringBill).filter_by(merchant_id=candidate.merchant_id).first()
+    if bill:
+        bill.active = False
+    session.flush()
+    return bill
+
+
+def deactivate_recurring_bill(session, bill):
+    """Deactivate a bill and reject its linked candidate without touching transactions."""
+    bill.active = False
+    candidate = session.query(RecurringCandidate).filter_by(merchant_id=bill.merchant_id).first()
+    if candidate:
+        candidate.active = False
+        candidate.status = "rejected"
+        candidate.reviewed_at = datetime.now()
+    session.flush()
+    return candidate
+
+
 def confirm_candidate(session, candidate, values):
     """Confirm edited evidence into a recurring bill; never called during detection."""
     candidate.display_name = values["display_name"]
