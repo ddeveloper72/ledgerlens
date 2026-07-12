@@ -209,6 +209,16 @@ The Daily Health page provides a date-selectable, read-only calculation of actua
 
 Daily financial-health results are calculations rather than persisted transactions. Recommendations are household cash-planning suggestions, not regulated investment, pension, insurance, or credit advice.
 
+## Household Income Allocation
+
+Income schedules preserve total expected pay for reporting, while available-cash forecasts use only explicit household-contribution allocations. Each allocation can use a fixed amount or percentage, a destination household account, effective dates, and an estimated, confirmed, actual, or inactive status.
+
+Availability classifications distinguish fully available, contribution-only, summary-only, and unavailable income. Personal, savings, unknown, and unallocated amounts never improve the household operating forecast. If no household contribution is configured, the total income remains visible but is excluded from forecastable cash.
+
+Contribution matching is reviewable. LedgerLens can propose a matching incoming transaction within the destination account, but the user must explicitly confirm matched, partially matched, overdue, skipped, or cancelled status. A received contribution is reflected through the actual account transaction and is not added again as expected income.
+
+Estimated variable budgets continue to represent shared costs paid through accounts that are not imported. Private spending is not subtracted merely because personal income remains outside the household allocation.
+
 ## Request Security
 
 CSRF protection is enabled by default for every state-changing form. Tests disable CSRF only through `TestConfig`; production and local development retain protection.

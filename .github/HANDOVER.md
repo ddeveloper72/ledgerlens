@@ -272,3 +272,11 @@ Latest validation:
 - Generate financial-health states, confidence explanations, and deterministic guidance from visible evidence.
 - Provide an accessible date timeline with explicit labels and review actions.
 - Validate migrations, tests, live startup, privacy, and staged content before incremental commits.
+
+## 13) Prompt 5 Income-Allocation Plan
+
+- Preserve income schedules as total-pay records and add effective-dated allocation records without inferring private values.
+- Include only explicit household contributions in payday and daily available-cash forecasts.
+- Scope joint available cash and confidence checks to contribution destination accounts.
+- Keep contribution matching read-only until an explicit review action records a status.
+- Add generic tests and documentation, then validate migrations, privacy, startup, and the full suite.
