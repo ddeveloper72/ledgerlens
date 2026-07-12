@@ -150,6 +150,25 @@ function wireCsrfProtection() {
     });
 }
 
+function wireDailyTimeline() {
+    const form = document.querySelector("[data-timeline-form]");
+    const slider = form?.querySelector("[data-timeline-slider]");
+    const picker = form?.querySelector("[data-timeline-date]");
+    if (!form || !slider || !picker) return;
+    const minimum = new Date(`${form.dataset.minDate}T00:00:00`);
+    const day = 86400000;
+    const syncSlider = () => {
+        const selected = new Date(`${picker.value}T00:00:00`);
+        slider.value = Math.max(0, Math.min(365, Math.round((selected - minimum) / day)));
+    };
+    slider.addEventListener("input", () => {
+        const selected = new Date(minimum.getTime() + Number(slider.value) * day);
+        picker.value = selected.toISOString().slice(0, 10);
+    });
+    picker.addEventListener("change", syncSlider);
+    syncSlider();
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     wireCsrfProtection();
     animateEntrance();
@@ -157,4 +176,5 @@ document.addEventListener("DOMContentLoaded", () => {
     wireDescriptionToggles();
     wireReviewCategoryInterlock();
     autoDismissFlash();
+    wireDailyTimeline();
 });

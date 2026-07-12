@@ -181,6 +181,27 @@ table tbody td {
     padding: 0.15rem 0.4rem;
 }
 
+.timeline-controls {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.65rem;
+    align-items: center;
+}
+
+.health-state, .guidance-card, .reconciliation-row {
+    border: 1px solid #cbd5e1;
+    border-radius: 0.75rem;
+    padding: 0.65rem;
+}
+
+.health-state { font-weight: 700; }
+.health-healthy { border-color: #059669; }
+.health-caution { border-color: #d97706; }
+.health-at_risk, .health-critical { border-color: #dc2626; }
+.health-insufficient_data { border-style: dashed; }
+.guidance-card, .reconciliation-row { margin-top: 0.75rem; background: rgba(248, 250, 252, 0.8); }
+.reconciliation-row { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; }
+
 .desc-cell {
     display: flex;
     align-items: center;
@@ -243,4 +264,5 @@ table tbody td {
     .review-form-grid {
         grid-template-columns: 1fr;
     }
+    .timeline-controls, .reconciliation-row { grid-template-columns: 1fr; }
 }

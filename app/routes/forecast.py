@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
@@ -6,19 +6,23 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from app.extensions import db
 from app.models import (
     Account, Category, IncomeSchedule, OneOffForecastEvent, PlannedCommitment,
-    RecurringBill, SavingsGoal, SinkingFundProvision, Transaction,
+    HouseholdForecastSetting, PaymentReconciliation, RecurringBill, SavingsGoal,
+    SinkingFundProvision, Transaction, VariableBudget,
 )
 from app.services.cashflow_forecast_service import (
     build_cashflow_forecast, occurrence_dates, sinking_fund_recommendation,
 )
 from app.services.merchant_service import ensure_category
 from app.services.money import parse_money
+from app.services.daily_financial_health_service import build_daily_financial_health
 
 bp = Blueprint("forecast", __name__)
 
 INCOME_FREQUENCIES = ("weekly", "fortnightly", "monthly", "irregular")
 COMMITMENT_FREQUENCIES = ("weekly", "fortnightly", "monthly", "quarterly", "annual", "one-off")
 COMMITMENT_TYPES = ("bill", "allowance", "groceries", "pet", "transport", "savings", "other")
+VARIABLE_BUDGET_FREQUENCIES = ("weekly", "fortnightly", "monthly", "payday")
+RECONCILIATION_STATUSES = ("expected", "matched", "partially_matched", "overdue", "skipped", "cancelled")
 HOUSEHOLD_FLAGS = ("household", "personal", "shared", "reimbursable", "unknown")
 
 
@@ -255,3 +259,81 @@ def delete_sinking_fund(item_id):
     db.session.delete(db.get_or_404(SinkingFundProvision, item_id))
     db.session.commit()
     return redirect(url_for("forecast.payday_forecast"))
+
+
+@bp.route("/daily-health")
+def daily_health():
+    """Render a selected-date calculation without persisting forecast results."""
+    try:
+        selected = date.fromisoformat(request.args.get("date", date.today().isoformat()))
+    except ValueError:
+        selected = date.today()
+        flash("Select a valid timeline date.", "error")
+    view = request.args.get("view", "30")
+    horizon = 90 if view == "90" else 30
+    snapshot = build_daily_financial_health(db.session, selected, horizon)
+    month_end = (selected.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+    return render_template("daily_health.html", snapshot=snapshot, selected_date=selected,
+        previous_date=selected - timedelta(days=1), next_date=selected + timedelta(days=1),
+        today=date.today(), slider_end=date.today() + timedelta(days=365), month_end=month_end, view=view,
+        budgets=VariableBudget.query.order_by(VariableBudget.next_expected_date).all(),
+        categories=Category.query.order_by(Category.name).all(),
+        budget_frequencies=VARIABLE_BUDGET_FREQUENCIES,
+        reconciliation_statuses=RECONCILIATION_STATUSES)
+
+
+@bp.route("/daily-health/settings", methods=["POST"])
+def save_daily_health_settings():
+    try:
+        amount = parse_money(request.form.get("safety_buffer"), non_negative=True)
+        setting = HouseholdForecastSetting.query.order_by(HouseholdForecastSetting.id).first() or HouseholdForecastSetting()
+        setting.safety_buffer = amount
+        db.session.add(setting); db.session.commit()
+        flash("Household safety buffer saved.", "success")
+    except ValueError as exc:
+        db.session.rollback(); flash(str(exc), "error")
+    return redirect(url_for("forecast.daily_health", date=request.form.get("selected_date")))
+
+
+@bp.route("/daily-health/budgets", methods=["POST"])
+@bp.route("/daily-health/budgets/<int:item_id>", methods=["POST"])
+def save_variable_budget(item_id=None):
+    try:
+        frequency = request.form.get("frequency", "")
+        if frequency not in VARIABLE_BUDGET_FREQUENCIES: raise ValueError("Select a supported budget frequency.")
+        item = db.session.get(VariableBudget, item_id) if item_id else VariableBudget()
+        if item_id and not item: raise ValueError("Variable budget not found.")
+        item.display_name = request.form.get("display_name", "").strip()
+        if not item.display_name: raise ValueError("Budget display name is required.")
+        item.amount = parse_money(request.form.get("amount"), non_negative=True)
+        item.frequency = frequency
+        item.next_expected_date = _date_value("next_expected_date")
+        category_name = request.form.get("category_name", "").strip()
+        item.category_id = ensure_category(db.session, category_name).id if category_name else None
+        item.essential = request.form.get("essential") == "on"
+        item.active = request.form.get("active", "on") == "on"
+        db.session.add(item); db.session.commit(); flash("Variable household budget saved.", "success")
+    except ValueError as exc:
+        db.session.rollback(); flash(str(exc), "error")
+    return redirect(url_for("forecast.daily_health", date=request.form.get("selected_date")))
+
+
+@bp.route("/daily-health/reconciliations", methods=["POST"])
+def review_reconciliation():
+    try:
+        status = request.form.get("status", "")
+        source_type = request.form.get("source_type", "")
+        source_id = request.form.get("source_id", type=int)
+        expected_date = date.fromisoformat(request.form.get("expected_date", ""))
+        if status not in RECONCILIATION_STATUSES or not source_type or not source_id: raise ValueError("Select a valid reconciliation status.")
+        row = PaymentReconciliation.query.filter_by(source_type=source_type, source_id=source_id, expected_date=expected_date).first() or PaymentReconciliation(source_type=source_type, source_id=source_id, expected_date=expected_date)
+        row.expected_amount = parse_money(request.form.get("expected_amount"), non_negative=True)
+        row.status = status
+        row.matched_transaction_id = request.form.get("matched_transaction_id", type=int) if status in {"matched", "partially_matched"} else None
+        if status in {"matched", "partially_matched"} and not row.matched_transaction_id:
+            raise ValueError("Select a proposed transaction before confirming a match.")
+        row.reviewed_at = datetime.now()
+        db.session.add(row); db.session.commit(); flash("Payment status reviewed.", "success")
+    except ValueError as exc:
+        db.session.rollback(); flash(str(exc), "error")
+    return redirect(url_for("forecast.daily_health", date=request.form.get("selected_date")))
