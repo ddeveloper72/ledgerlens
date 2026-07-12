@@ -173,3 +173,5 @@ def test_migration_upgrade_from_empty_database(tmp_path):
     with app.app_context():
         tables = set(inspect(db.engine).get_table_names())
         assert {"account", "transaction", "income_schedule", "income_allocation", "contribution_reconciliation", "planned_commitment", "one_off_forecast_event", "sinking_fund_provision", "household_forecast_setting", "variable_budget", "payment_reconciliation"} <= tables
+        columns = {column["name"] for column in inspect(db.engine).get_columns("account")}
+        assert {"current_balance", "balance_as_of", "overdraft_limit", "reporting_scope"} <= columns

@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from app.models import Transaction
+from app.models import Account, Transaction
 from app.services.period_service import apply_transaction_period
 
 ESSENTIAL_CATEGORIES = {"Groceries", "Utilities", "Transport", "Loan Payments", "Transfers"}
@@ -8,7 +8,7 @@ ESSENTIAL_CATEGORIES = {"Groceries", "Utilities", "Transport", "Loan Payments", 
 
 def household_analytics_snapshot(session, period):
     """Compute household KPIs from the same bounded period used by the dashboard."""
-    rows = apply_transaction_period(session.query(Transaction).filter(Transaction.excluded_from_analysis.is_(False), Transaction.internal_transfer.is_(False)), period, Transaction).all()
+    rows = apply_transaction_period(session.query(Transaction).join(Account).filter(Account.reporting_scope != "savings_tracking", Transaction.excluded_from_analysis.is_(False), Transaction.internal_transfer.is_(False)), period, Transaction).all()
     totals = {
         "groceries": Decimal("0"), "technology": Decimal("0"), "car": Decimal("0"),
         "pet": Decimal("0"), "allowance": Decimal("0"), "essential": Decimal("0"),

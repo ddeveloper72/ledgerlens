@@ -7,13 +7,14 @@ def money(value):
     return Decimal(value or 0).quantize(Decimal("0.01"))
 
 
-def account_balance_at(session, account, target_date):
+def account_balance_at(session, account, target_date, include_internal=False):
     """Return an account balance using its latest snapshot plus later transactions."""
     query = session.query(Transaction).filter(
         Transaction.account_id == account.id,
         Transaction.excluded_from_analysis.is_(False),
-        Transaction.internal_transfer.is_(False),
     )
+    if not include_internal:
+        query = query.filter(Transaction.internal_transfer.is_(False))
     if account.current_balance is not None and account.balance_as_of and target_date >= account.balance_as_of:
         movement = query.filter(
             Transaction.posted_date > account.balance_as_of,

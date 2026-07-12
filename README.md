@@ -227,6 +227,12 @@ Account settings can record a bank-provided current balance, its as-of date, and
 
 Current balance and available funds are deliberately separate: overdraft capacity can prevent a payment from failing, but it is credit rather than household income. Daily Health therefore shows both the suggested contribution needed to avoid using the overdraft and any minimum shortfall that would exceed all available funds.
 
+## Account Reporting Scopes
+
+Accounts can be classified as household operating, personal, or savings tracking. Savings-tracking accounts remain complete ledgers but are excluded from household income, spending, cash-flow, and recurrence calculations.
+
+The Accounts and Dashboard pages show a separate savings-health summary. Credit Union payroll entries are treated as internal Savings movements and reported as positive amounts saved using their absolute statement value; the original imported signs and descriptions remain unchanged for audit.
+
 ## Request Security
 
 CSRF protection is enabled by default for every state-changing form. Tests disable CSRF only through `TestConfig`; production and local development retain protection.

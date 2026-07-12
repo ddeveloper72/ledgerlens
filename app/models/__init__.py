@@ -19,6 +19,7 @@ class Account(db.Model):
     current_balance = db.Column(db.Numeric(12, 2), nullable=True)
     balance_as_of = db.Column(db.Date, nullable=True)
     overdraft_limit = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    reporting_scope = db.Column(db.String(30), nullable=False, default="household_operating")
     created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
 
     transactions = db.relationship("Transaction", backref="account", lazy=True)

@@ -4,7 +4,7 @@ from decimal import Decimal
 import json
 from statistics import median
 
-from app.models import Category, RecurringBill, RecurringCandidate, Transaction
+from app.models import Account, Category, RecurringBill, RecurringCandidate, Transaction
 
 FREQUENCIES = ("weekly", "fortnightly", "monthly", "quarterly", "annual", "irregular")
 FREQUENCY_DAYS = {"weekly": 7, "fortnightly": 14, "monthly": 30, "quarterly": 91, "annual": 365}
@@ -29,7 +29,8 @@ def detect_recurring_candidates(session, min_occurrences=3):
     """Return evidence-rich suggestions without writing to the database."""
     rows = (
         session.query(Transaction)
-        .filter(Transaction.amount < 0, Transaction.excluded_from_analysis.is_(False), Transaction.internal_transfer.is_(False))
+        .join(Account)
+        .filter(Account.reporting_scope != "savings_tracking", Transaction.amount < 0, Transaction.excluded_from_analysis.is_(False), Transaction.internal_transfer.is_(False))
         .order_by(Transaction.posted_date.asc(), Transaction.id.asc())
         .all()
     )

@@ -2,6 +2,11 @@ from app.models import Account, Category, Transaction
 
 
 CREDIT_UNION_INTERNAL_RULES = {
+    "payroll": {
+        "category": "Savings",
+        "household_flag": "personal",
+        "reason": "Credit Union payroll savings contribution",
+    },
     "mngtfee": {
         "category": "Savings",
         "reason": "Credit Union earmarked savings transfer",

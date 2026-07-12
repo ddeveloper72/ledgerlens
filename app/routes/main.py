@@ -19,6 +19,7 @@ from app.services.csv_import import (
 )
 from app.services.cashflow_service import cash_flow_calendar
 from app.services.account_balance_service import account_balance_at
+from app.services.savings_account_health_service import savings_account_health
 from app.services.completeness_service import data_completeness_report
 from app.services.household_analytics import household_analytics_snapshot
 from app.services.merchant_service import (
@@ -179,10 +180,11 @@ def dashboard():
     except ValueError as exc:
         flash(str(exc), "error")
         period = resolve_period()
-    total_transactions = Transaction.query.filter_by(excluded_from_analysis=False).count()
-    pending_transactions = Transaction.query.filter_by(review_state="pending", excluded_from_analysis=False, internal_transfer=False).count()
+    operating_filter = Account.reporting_scope != "savings_tracking"
+    total_transactions = Transaction.query.join(Account).filter(operating_filter, Transaction.excluded_from_analysis.is_(False)).count()
+    pending_transactions = Transaction.query.join(Account).filter(operating_filter, Transaction.review_state == "pending", Transaction.excluded_from_analysis.is_(False), Transaction.internal_transfer.is_(False)).count()
     month_transactions = apply_transaction_period(
-        Transaction.query.filter_by(excluded_from_analysis=False, internal_transfer=False).order_by(Transaction.posted_date.desc(), Transaction.id.desc()),
+        Transaction.query.join(Account).filter(operating_filter, Transaction.excluded_from_analysis.is_(False), Transaction.internal_transfer.is_(False)).order_by(Transaction.posted_date.desc(), Transaction.id.desc()),
         period,
         Transaction,
     ).all()
@@ -212,8 +214,9 @@ def dashboard():
                 insurance_spend += expense
 
     uncategorised_transactions = (
-        Transaction.query.outerjoin(Category)
+        Transaction.query.join(Account).outerjoin(Category)
         .filter(
+            operating_filter,
             Transaction.excluded_from_analysis.is_(False),
             Transaction.internal_transfer.is_(False),
             db.or_(
@@ -231,7 +234,7 @@ def dashboard():
     recovery_snapshot = savings_recovery_summary(db.session)
     completeness = data_completeness_report(db.session, period)
     recent_transactions = (
-        Transaction.query.filter_by(excluded_from_analysis=False).order_by(Transaction.posted_date.desc(), Transaction.id.desc())
+        Transaction.query.join(Account).filter(operating_filter, Transaction.excluded_from_analysis.is_(False)).order_by(Transaction.posted_date.desc(), Transaction.id.desc())
         .limit(8)
         .all()
     )
@@ -256,6 +259,7 @@ def dashboard():
         recent_transactions=recent_transactions,
         period=period,
         completeness=completeness,
+        savings_accounts=savings_account_health(db.session),
     )
 
 def _intelligence_context(preview=None):
@@ -472,7 +476,7 @@ def accounts():
             }
         )
 
-    return render_template("accounts.html", account_rows=account_rows)
+    return render_template("accounts.html", account_rows=account_rows, savings_accounts=savings_account_health(db.session))
 
 
 @bp.route("/accounts/<int:account_id>/balance", methods=["POST"])
@@ -483,6 +487,10 @@ def update_account_balance(account_id):
         account.current_balance = parse_money(request.form.get("current_balance"), allow_negative=True)
         account.overdraft_limit = parse_money(request.form.get("overdraft_limit", "0"), non_negative=True)
         account.balance_as_of = date.fromisoformat(request.form.get("balance_as_of", ""))
+        scope = request.form.get("reporting_scope", "household_operating")
+        if scope not in {"household_operating", "personal", "savings_tracking"}:
+            raise ValueError("Select a supported reporting scope.")
+        account.reporting_scope = scope
         db.session.commit()
         flash("Account balance snapshot saved.", "success")
     except ValueError as exc:

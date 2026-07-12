@@ -19,6 +19,8 @@
     <p class="text-sm text-slate-600 mt-3">Reporting period: {{ period.label }}</p>
 </section>
 
+{% if savings_accounts %}<section class="panel mb-6" data-fade-in><div class="panel-head"><div><h2 class="panel-title">Savings Account Health</h2><p class="text-sm text-slate-600">Tracked separately and excluded from household operating cash.</p></div><a class="pill-link" href="{{ url_for('main.accounts') }}">View details</a></div>{% for row in savings_accounts %}<div class="summary-row"><span>{{ row.account.name }} · latest {{ row.latest_date or 'unknown' }}</span><span>{{ '%.2f'|format(row.balance) }} saved</span></div>{% endfor %}</section>{% endif %}
+
 {% if completeness.warnings %}
 <section class="panel mb-6 border-amber-300 bg-amber-50" data-fade-in>
     <h2 class="panel-title">Analysis may be incomplete</h2>
