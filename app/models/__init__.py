@@ -222,3 +222,42 @@ class SinkingFundProvision(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
 
     savings_goal = db.relationship("SavingsGoal")
+
+
+class HouseholdForecastSetting(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    safety_buffer = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+
+class VariableBudget(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    display_name = db.Column(db.String(120), nullable=False)
+    category_id = db.Column(db.Integer, db.ForeignKey("category.id"), nullable=True)
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+    frequency = db.Column(db.String(20), nullable=False)
+    next_expected_date = db.Column(db.Date, nullable=False)
+    essential = db.Column(db.Boolean, nullable=False, default=False)
+    active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+
+    category = db.relationship("Category")
+
+
+class PaymentReconciliation(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    source_type = db.Column(db.String(30), nullable=False)
+    source_id = db.Column(db.Integer, nullable=False)
+    expected_date = db.Column(db.Date, nullable=False)
+    expected_amount = db.Column(db.Numeric(12, 2), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default="expected")
+    matched_transaction_id = db.Column(db.Integer, db.ForeignKey("transaction.id"), nullable=True)
+    reviewed_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+
+    matched_transaction = db.relationship("Transaction")
+
+    __table_args__ = (
+        db.UniqueConstraint("source_type", "source_id", "expected_date", name="uq_reconciliation_occurrence"),
+    )

@@ -40,9 +40,12 @@ def create_app(config_class=Config):
         SavingsGoal,
         SavingsRecoveryEvent,
         SinkingFundProvision,
+        HouseholdForecastSetting,
+        PaymentReconciliation,
         StatementImport,
         Transaction,
         User,
+        VariableBudget,
     )
     from app.routes.main import bp as main_bp
     from app.routes.forecast import bp as forecast_bp
