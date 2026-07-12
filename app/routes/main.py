@@ -37,7 +37,7 @@ from app.services.recurrence_service import (
     deactivate_recurring_bill as deactivate_bill_service, refresh_candidates,
     recurring_expected_vs_missing,
 )
-from app.services.savings_service import add_recovery_event, savings_recovery_summary
+from app.services.savings_service import REASON_CATEGORIES, add_recovery_event, savings_recovery_summary
 
 bp = Blueprint("main", __name__)
 
@@ -288,10 +288,11 @@ def preview_merchant_mapping():
     alias_text = request.form.get("alias_text", "").strip()
     merchant_name = request.form.get("merchant_name", "").strip()
     category_name = request.form.get("category_name", "").strip() or "Uncategorized"
+    household_flag = request.form.get("household_flag") if request.form.get("household_flag") in HOUSEHOLD_FLAGS else "unknown"
     if not alias_text or not merchant_name:
         flash("Alias and merchant are required.", "error")
         return redirect(url_for("main.intelligence"))
-    preview = {"alias_text": alias_text, "merchant_name": merchant_name, "category_name": category_name, "count": preview_mapping_count(db.session, alias_text)}
+    preview = {"alias_text": alias_text, "merchant_name": merchant_name, "category_name": category_name, "household_flag": household_flag, "count": preview_mapping_count(db.session, alias_text)}
     return render_template("intelligence.html", **_intelligence_context(preview))
 
 
@@ -300,10 +301,11 @@ def save_merchant_mapping():
     alias_text = request.form.get("alias_text", "").strip()
     merchant_name = request.form.get("merchant_name", "").strip()
     category_name = request.form.get("category_name", "").strip() or "Uncategorized"
+    household_flag = request.form.get("household_flag") if request.form.get("household_flag") in HOUSEHOLD_FLAGS else "unknown"
     if not alias_text or not merchant_name:
         flash("Alias and merchant are required.", "error")
         return redirect(url_for("main.intelligence"))
-    alias = save_mapping(db.session, alias_text, merchant_name, origin="manual")
+    alias = save_mapping(db.session, alias_text, merchant_name, category_name=category_name, household_flag=household_flag, origin="manual")
     updated = apply_mapping(db.session, alias, category_name) if request.form.get("confirm_apply") == "on" else 0
     db.session.commit()
     flash(f"Mapping saved. {updated} pending transaction(s) updated.", "success")
@@ -322,6 +324,9 @@ def update_merchant_mapping(alias_id):
     db.session.add(merchant)
     db.session.flush()
     alias.merchant_id = merchant.id
+    category_name = request.form.get("category_name", "").strip()
+    alias.category_id = ensure_category(db.session, category_name).id if category_name else None
+    alias.household_flag = request.form.get("household_flag") if request.form.get("household_flag") in HOUSEHOLD_FLAGS else "unknown"
     alias.active = request.form.get("active") == "on"
     db.session.commit()
     flash("Merchant mapping updated; no transactions were changed.", "success")
@@ -423,6 +428,7 @@ def savings_recovery():
     return render_template(
         "savings_recovery.html",
         recovery_snapshot=savings_recovery_summary(db.session),
+        reason_categories=REASON_CATEGORIES,
     )
 
 @bp.route("/accounts", methods=["GET", "POST"])

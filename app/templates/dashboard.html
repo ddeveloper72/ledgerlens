@@ -9,6 +9,7 @@
             <option value="current_month" {{ 'selected' if period.key == 'current_month' else '' }}>Current month</option>
             <option value="previous_month" {{ 'selected' if period.key == 'previous_month' else '' }}>Previous month</option>
             <option value="last_3_months" {{ 'selected' if period.key == 'last_3_months' else '' }}>Last 3 months</option>
+            <option value="year_to_date" {{ 'selected' if period.key == 'year_to_date' else '' }}>Year to date</option>
             <option value="custom" {{ 'selected' if period.key == 'custom' else '' }}>Custom range</option>
         </select>
         <input type="date" name="start_date" class="file-input" value="{{ period.start_date }}">
@@ -30,7 +31,7 @@
     <div class="panel-head"><h2 class="panel-title">Data Completeness</h2></div>
     <p class="text-sm text-slate-600 mb-3">Imported range: {{ completeness.represented_start or 'None' }} to {{ completeness.represented_end or 'None' }}</p>
     <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Account</th><th>Latest transaction</th><th>Status</th></tr></thead><tbody>
-        {% for row in completeness.accounts %}<tr><td>{{ row.account.name }}</td><td>{{ row.latest_date or 'No imports' }}</td><td>{{ 'Needs recent import' if row.stale else 'Current' }}</td></tr>{% endfor %}
+        {% for row in completeness.accounts %}<tr><td>{{ row.account.name }}</td><td>{{ row.earliest_date or 'No imports' }} to {{ row.latest_date or 'No imports' }}</td><td>{{ 'Needs recent import' if row.stale else 'Current' }}</td></tr>{% endfor %}
     </tbody></table></div>
 </section>
 

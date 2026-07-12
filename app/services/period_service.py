@@ -28,6 +28,10 @@ def resolve_period(key="current_month", start_text=None, end_text=None, today=No
         start = _shift_month(month_start, -2)
         end = today
         label = "Last 3 months"
+    elif key == "year_to_date":
+        start = date(today.year, 1, 1)
+        end = today
+        label = "Year to date"
     elif key == "custom":
         try:
             start = date.fromisoformat((start_text or "").strip())

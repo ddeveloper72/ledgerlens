@@ -163,21 +163,39 @@ def test_mapping_preview_is_read_only_and_application_is_explicit(client, app):
     with app.app_context():
         assert MerchantAlias.query.count() == 0
         assert Transaction.query.one().merchant_id is None
-    client.post("/merchant-mappings", data={"alias_text": "Example Alias", "merchant_name": "Example Merchant", "category_name": "General"})
+    client.post("/merchant-mappings", data={"alias_text": "Example Alias", "merchant_name": "Example Merchant", "category_name": "General", "household_flag": "household"})
     with app.app_context():
-        assert MerchantAlias.query.count() == 1
+        alias = MerchantAlias.query.one()
+        assert alias.category.name == "General"
+        assert alias.household_flag == "household"
         assert Transaction.query.one().merchant_id is None
-    client.post("/merchant-mappings", data={"alias_text": "Example Alias", "merchant_name": "Example Merchant", "category_name": "General", "confirm_apply": "on"})
+    client.post("/merchant-mappings", data={"alias_text": "Example Alias", "merchant_name": "Example Merchant", "category_name": "General", "household_flag": "household", "confirm_apply": "on"})
     with app.app_context():
         assert Transaction.query.one().merchant_id is not None
+        assert Transaction.query.one().household_flag == "household"
 
 
 def test_parse_money_uses_decimal_and_rejects_unsafe_values():
     assert parse_money("10.235") == Decimal("10.24")
+    assert parse_money("€ 1,234.565") == Decimal("1234.57")
+    assert parse_money("-10.00", allow_negative=True) == Decimal("-10.00")
     assert parse_money("0", non_negative=True) == Decimal("0.00")
     for value in ["", "not money", "NaN", "Infinity", "-0.01"]:
         with pytest.raises(ValueError):
             parse_money(value, non_negative=value == "-0.01")
+    with pytest.raises(ValueError):
+        parse_money(Decimal("1.00"))
+
+
+def test_candidate_retains_observed_date_evidence(app):
+    with app.app_context():
+        account = make_account()
+        add_series(account, 7)
+        created, _ = refresh_candidates(db.session)
+        db.session.commit()
+        candidate = RecurringCandidate.query.one()
+        assert created == 1
+        assert candidate.observed_dates == '["2025-01-01", "2025-01-08", "2025-01-15", "2025-01-22"]'
 
 
 def test_savings_event_history_calculates_recovery(app):
@@ -185,8 +203,8 @@ def test_savings_event_history_calculates_recovery(app):
         goal = SavingsGoal(name="Emergency Fund", target_amount=Decimal("1000.00"), current_amount=Decimal("1000.00"), repayment_per_payday=Decimal("100.00"))
         db.session.add(goal)
         db.session.flush()
-        add_recovery_event(db.session, goal, event_date=date(2026, 1, 1), amount=Decimal("400.00"), event_type="withdrawal", reason="Emergency")
-        add_recovery_event(db.session, goal, event_date=date(2026, 2, 1), amount=Decimal("150.00"), event_type="repayment", reason="Payday")
+        add_recovery_event(db.session, goal, event_date=date(2026, 1, 1), amount=Decimal("400.00"), event_type="withdrawal", reason="other")
+        add_recovery_event(db.session, goal, event_date=date(2026, 2, 1), amount=Decimal("150.00"), event_type="repayment", reason="income timing")
         db.session.commit()
         summary = savings_recovery_summary(db.session)
         assert summary["current_amount"] == Decimal("750.00")
@@ -207,6 +225,22 @@ def test_completeness_warning_and_period_filter(app):
         assert period.end_date == date(2026, 1, 31)
         assert report["complete"] is False
         assert report["warnings"]
+
+
+def test_year_to_date_and_completeness_details(app):
+    with app.app_context():
+        account = make_account()
+        db.session.add_all([
+            Transaction(account_id=account.id, posted_date=date(2026, 1, 1), original_description="Example A", cleaned_description="Example A", amount=Decimal("-1.00"), review_state="reviewed"),
+            Transaction(account_id=account.id, posted_date=date(2026, 3, 1), original_description="Example B", cleaned_description="Example B", amount=Decimal("-1.00"), review_state="reviewed", excluded_from_analysis=True),
+        ])
+        db.session.commit()
+        period = resolve_period("year_to_date", today=date(2026, 3, 15))
+        report = data_completeness_report(db.session, period, today=date(2026, 3, 15))
+        assert (period.start_date, period.end_date) == (date(2026, 1, 1), date(2026, 3, 15))
+        assert report["accounts"][0]["earliest_date"] == date(2026, 1, 1)
+        assert report["excluded"] == 1
+        assert report["household_reports_partial"] is True
 
 
 def test_paypal_internal_exclusion_is_auditable_idempotent_and_reversible(app):

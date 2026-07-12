@@ -85,7 +85,7 @@ def payday_forecast():
         start, end = _forecast_bounds(today, view)
     actual_opening = _actual_opening_balance(start)
     try:
-        opening = parse_money(request.args.get("opening_balance", str(actual_opening)))
+        opening = parse_money(request.args.get("opening_balance", str(actual_opening)), allow_negative=True)
     except ValueError as exc:
         flash(str(exc), "error")
         opening = actual_opening

@@ -30,10 +30,13 @@ class MerchantAlias(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     alias = db.Column(db.String(120), unique=True, nullable=False)
     merchant_id = db.Column(db.Integer, db.ForeignKey("merchant.id"), nullable=False)
+    category_id = db.Column(db.Integer, db.ForeignKey("category.id"), nullable=True)
+    household_flag = db.Column(db.String(20), nullable=False, default="unknown")
     origin = db.Column(db.String(20), nullable=False, default="manual")
     active = db.Column(db.Boolean, nullable=False, default=True)
 
     merchant = db.relationship("Merchant", backref="aliases")
+    category = db.relationship("Category")
 
 
 class Category(db.Model):
@@ -126,6 +129,7 @@ class RecurringCandidate(db.Model):
     observed_count = db.Column(db.Integer, nullable=False)
     first_observed_date = db.Column(db.Date, nullable=False)
     last_observed_date = db.Column(db.Date, nullable=False)
+    observed_dates = db.Column(db.Text, nullable=False, default="[]")
     typical_amount = db.Column(db.Numeric(12, 2), nullable=False)
     amount_variation = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     frequency = db.Column(db.String(20), nullable=False, default="irregular")

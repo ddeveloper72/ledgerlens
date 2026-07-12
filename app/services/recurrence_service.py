@@ -1,6 +1,7 @@
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+import json
 from statistics import median
 
 from app.models import Category, RecurringBill, RecurringCandidate, Transaction
@@ -66,6 +67,7 @@ def detect_recurring_candidates(session, min_occurrences=3):
                 "observed_count": len(txns),
                 "first_observed_date": dates[0],
                 "last_observed_date": dates[-1],
+                "observed_dates": json.dumps([value.isoformat() for value in dates]),
                 "typical_amount": typical_amount,
                 "amount_variation": variation,
                 "frequency": frequency,

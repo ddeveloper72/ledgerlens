@@ -7,7 +7,7 @@
 {% for candidate in candidates %}
 <section class="panel mt-6" data-fade-in>
     <div class="panel-head"><h2 class="panel-title">{{ candidate.display_name }}</h2><span class="smart-key">{{ candidate.status }} &middot; {{ candidate.confidence_score }}% confidence</span></div>
-    <div class="grid gap-3 md:grid-cols-3 text-sm mb-5"><p>Observed: {{ candidate.observed_count }} times</p><p>Range: {{ candidate.first_observed_date }} to {{ candidate.last_observed_date }}</p><p>Typical: {{ '%.2f'|format(candidate.typical_amount) }}</p><p>Variation: {{ '%.2f'|format(candidate.amount_variation) }}</p><p>Frequency: {{ candidate.frequency }}</p><p>Next estimate: {{ candidate.estimated_next_date or 'Unknown' }}</p></div>
+    <div class="grid gap-3 md:grid-cols-3 text-sm mb-5"><p>Observed: {{ candidate.observed_count }} times</p><p>Range: {{ candidate.first_observed_date }} to {{ candidate.last_observed_date }}</p><p>Observed dates: {{ candidate.observed_dates or 'Unavailable' }}</p><p>Typical: {{ '%.2f'|format(candidate.typical_amount) }}</p><p>Variation: {{ '%.2f'|format(candidate.amount_variation) }}</p><p>Frequency: {{ candidate.frequency }}</p><p>Next estimate: {{ candidate.estimated_next_date or 'Unknown' }}</p></div>
     {% if candidate.status in ['pending', 'confirmed'] %}
     <form action="{{ url_for('main.confirm_recurring_candidate', candidate_id=candidate.id) }}" method="post" class="review-form-grid">
         <input class="file-input" name="display_name" value="{{ candidate.display_name }}" required>

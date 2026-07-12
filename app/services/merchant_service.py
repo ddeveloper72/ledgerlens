@@ -22,7 +22,7 @@ def ensure_category(session, category_name):
     return category
 
 
-def save_mapping(session, alias_text, merchant_name, *, origin="manual"):
+def save_mapping(session, alias_text, merchant_name, *, category_name=None, household_flag="unknown", origin="manual"):
     """Create or update an active merchant alias mapping."""
     merchant = session.query(Merchant).filter_by(name=merchant_name.strip()).first()
     if not merchant:
@@ -35,6 +35,8 @@ def save_mapping(session, alias_text, merchant_name, *, origin="manual"):
         alias = MerchantAlias(alias=alias_value, merchant_id=merchant.id)
         session.add(alias)
     alias.merchant_id = merchant.id
+    alias.category_id = ensure_category(session, category_name).id if category_name else None
+    alias.household_flag = household_flag
     alias.origin = origin
     alias.active = True
     session.flush()
@@ -52,17 +54,18 @@ def preview_mapping_count(session, alias_text):
     )
 
 
-def apply_mapping(session, alias, category_name):
+def apply_mapping(session, alias, category_name=None):
     """Apply a saved active mapping after explicit confirmation."""
     if not alias.active:
         return 0
-    category = ensure_category(session, category_name)
+    category = alias.category or ensure_category(session, category_name)
     updated = 0
     for txn in session.query(Transaction).filter_by(review_state="pending", excluded_from_analysis=False, internal_transfer=False).all():
         if alias.alias not in canonical_merchant_hint(txn.cleaned_description):
             continue
         txn.merchant_id = alias.merchant_id
         txn.category_id = category.id
+        txn.household_flag = alias.household_flag
         updated += 1
     session.flush()
     return updated

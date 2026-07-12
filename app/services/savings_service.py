@@ -3,12 +3,16 @@ from decimal import Decimal, ROUND_CEILING
 from app.models import SavingsGoal, SavingsRecoveryEvent
 
 EVENT_TYPES = ("withdrawal", "repayment", "adjustment")
+REASON_CATEGORIES = ("vehicle", "household repair", "annual charge", "medical", "income timing", "other")
 
 
 def add_recovery_event(session, goal, *, event_date, amount, event_type, reason, note=None):
     """Append an immutable recovery event after validating its type."""
     if event_type not in EVENT_TYPES:
         raise ValueError("Unsupported savings event type.")
+    reason = reason.strip().lower()
+    if reason not in REASON_CATEGORIES:
+        raise ValueError("Select a supported savings reason category.")
     event = SavingsRecoveryEvent(
         savings_goal_id=goal.id, event_date=event_date, amount=amount,
         event_type=event_type, reason=reason.strip(), note=(note or "").strip() or None,
