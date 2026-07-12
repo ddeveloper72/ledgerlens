@@ -79,7 +79,26 @@ def test_negative_and_below_buffer_states_generate_guidance(app):
         assert result["state"] == "critical"
         assert result["minimum_projected_balance"] == Decimal("-50.00")
         assert result["minimum_balance_date"] == date(2026, 1, 15)
+        assert result["required_contribution"] == Decimal("130.00")
+        assert result["contribution_deadline"] == date(2026, 1, 15)
+        assert result["payments_before_next_income_total"] == Decimal("150.00")
         assert any(item["severity"] == "urgent" for item in result["recommendations"])
+
+
+def test_no_topup_when_payments_and_buffer_are_covered(app):
+    with app.app_context():
+        account = setup_account(); add_transaction(account, date(2026, 1, 10), "500.00")
+        add_household_income(account, "100.00", date(2026, 1, 20))
+        db.session.add_all([
+            HouseholdForecastSetting(safety_buffer=Decimal("100.00")),
+            PlannedCommitment(display_name="Example Covered Payment", amount=Decimal("200.00"), frequency="one-off", next_expected_date=date(2026, 1, 15), active=True, commitment_type="bill"),
+        ])
+        db.session.commit()
+        result = build_daily_financial_health(db.session, date(2026, 1, 10))
+        assert result["required_contribution"] == Decimal("0.00")
+        assert result["contribution_deadline"] is None
+        assert result["payments_before_next_income_total"] == Decimal("200.00")
+        assert result["projected_position_after_contribution"] == Decimal("300.00")
 
 
 def test_proposed_and_reviewed_partial_payment(app):

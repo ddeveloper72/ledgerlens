@@ -201,6 +201,24 @@ table tbody td {
 .health-insufficient_data { border-style: dashed; }
 .guidance-card, .reconciliation-row { margin-top: 0.75rem; background: rgba(248, 250, 252, 0.8); }
 .allocation-card { margin-top: 0.75rem; border-top: 1px solid #cbd5e1; padding-top: 0.75rem; }
+
+.household-plan {
+    border: 2px solid #0f766e;
+    border-radius: 1.25rem;
+    padding: 1.5rem;
+    background: rgba(240, 253, 250, 0.92);
+}
+
+.household-plan--action {
+    border-color: #c2410c;
+    background: rgba(255, 247, 237, 0.95);
+}
+
+.plan-kicker { margin-top: 0.75rem; font-weight: 700; color: #475569; }
+.plan-answer { margin-top: 0.25rem; font-size: clamp(1.6rem, 4vw, 2.5rem); line-height: 1.1; font-weight: 800; color: #0f172a; }
+.plan-deadline { margin-top: 0.45rem; font-size: 1.2rem; font-weight: 800; color: #9a3412; }
+.plan-explanation { margin-top: 0.8rem; max-width: 55rem; color: #334155; }
+.plan-warning { margin-top: 0.8rem; border-left: 4px solid #dc2626; padding-left: 0.75rem; font-weight: 700; color: #991b1b; }
 .reconciliation-row { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; }
 
 .desc-cell {

@@ -16,19 +16,40 @@
   </form>
 </section>
 
-{% if snapshot.data_confidence.level != 'high' %}<section class="panel mb-6 border-amber-300 bg-amber-50"><h2 class="panel-title">{{ snapshot.data_confidence.level|title }} data confidence</h2><p class="text-sm">This forecast may be incomplete and is not definitive financial advice.</p><ul class="list-disc pl-5 text-sm">{% for reason in snapshot.data_confidence.reasons %}<li>{{ reason }}</li>{% endfor %}</ul></section>{% endif %}
-
-<section class="grid gap-4 md:grid-cols-3 mb-6" data-stagger>
-{% for label, value, kind in [
-('Joint-account available balance', snapshot.joint_account_available_balance, 'Actual'), ('Income received', snapshot.actual_income, 'Actual'), ('Spending paid', snapshot.actual_expenditure, 'Actual'),
-('Essential bills paid', snapshot.essential_bills_paid|length, 'Actual'), ('Bills still outstanding', snapshot.outstanding_bills|length, 'Forecast'), ('Next five days', snapshot.upcoming_five_days|length, 'Forecast'),
-('Total household income expected', snapshot.total_household_income_expected, 'Forecast'), ('Household contributions expected', snapshot.household_contributions_expected, 'Forecast'),
-('Contributions received', snapshot.household_contributions_received, 'Actual'), ('Contributions still due', snapshot.household_contributions_due, 'Forecast'),
-('Income excluded from available cash', snapshot.income_excluded_from_forecast, 'Forecast'), ('Estimated non-visible spending', snapshot.estimated_household_spending, 'Estimated'),
-('Projected pre-payday balance', snapshot.projected_pre_income_balance, 'Estimated'), ('Minimum projected balance', snapshot.minimum_projected_balance, 'Estimated'), ('Conservative household position', snapshot.conservative_projected_balance, 'Estimated') ] %}
-<article class="metric-card"><span class="smart-key">{{ kind }}</span><p class="metric-label">{{ label }}</p><p class="metric-value">{{ '%.2f'|format(value) if value is not none and kind != 'Forecast' else value if value is not none else 'Unavailable' }}</p></article>
-{% endfor %}
+<section class="household-plan {{ 'household-plan--action' if snapshot.required_contribution > 0 else 'household-plan--clear' }} mb-6" data-fade-in>
+  <span class="smart-key">Household plan</span>
+  {% if snapshot.required_contribution > 0 %}
+  <p class="plan-kicker">To keep upcoming payments covered</p>
+  <h2 class="plan-answer">Add €{{ '%.2f'|format(snapshot.required_contribution) }} to the joint account</h2>
+  <p class="plan-deadline">By {{ snapshot.contribution_deadline or 'the next payment due date' }}</p>
+  <p class="plan-explanation">This is the estimated top-up needed to pay {{ snapshot.payments_before_next_income|length }} upcoming item(s) totalling €{{ '%.2f'|format(snapshot.payments_before_next_income_total) }} and keep the balance at or above your €{{ '%.2f'|format(snapshot.safety_buffer) }} safety buffer.</p>
+  {% else %}
+  <p class="plan-kicker">Upcoming payments are currently covered</p>
+  <h2 class="plan-answer">No additional joint-account top-up is forecast right now</h2>
+  <p class="plan-explanation">The forecast stays at or above your €{{ '%.2f'|format(snapshot.safety_buffer) }} safety buffer through {{ snapshot.next_income_date or 'the end of this view' }}.</p>
+  {% endif %}
+  {% if snapshot.overdue_commitments %}<p class="plan-warning">Review {{ snapshot.overdue_commitments|length }} overdue unmatched payment(s); they may change the amount required.</p>{% endif %}
 </section>
+
+<section class="grid gap-4 md:grid-cols-4 mb-6" data-stagger>
+  <article class="metric-card"><span class="smart-key">Actual</span><p class="metric-label">In the joint account now</p><p class="metric-value">€{{ '%.2f'|format(snapshot.joint_account_available_balance) }}</p></article>
+  <article class="metric-card"><span class="smart-key">Forecast</span><p class="metric-label">Payments before next income</p><p class="metric-value">€{{ '%.2f'|format(snapshot.payments_before_next_income_total) }}</p><p class="text-sm">{{ snapshot.payments_before_next_income|length }} item(s)</p></article>
+  <article class="metric-card"><span class="smart-key">Suggested</span><p class="metric-label">Top-up needed</p><p class="metric-value">€{{ '%.2f'|format(snapshot.required_contribution) }}</p><p class="text-sm">By {{ snapshot.contribution_deadline or 'not currently required' }}</p></article>
+  <article class="metric-card"><span class="smart-key">Estimated</span><p class="metric-label">Lowest balance after suggested top-up</p><p class="metric-value">€{{ '%.2f'|format(snapshot.projected_position_after_contribution) }}</p></article>
+</section>
+
+{% if snapshot.data_confidence.level != 'high' %}<section class="panel mb-6 border-amber-300 bg-amber-50"><h2 class="panel-title">How certain is this plan? {{ snapshot.data_confidence.level|title }}</h2><p class="text-sm">Check these items together before relying on the suggested top-up:</p><ul class="list-disc pl-5 text-sm">{% for reason in snapshot.data_confidence.reasons %}<li>{{ reason }}</li>{% endfor %}</ul></section>{% endif %}
+
+<section class="panel mb-6"><details><summary class="panel-title">Show detailed figures</summary><div class="grid gap-3 md:grid-cols-2 mt-4 text-sm">
+  <p class="summary-row"><span>Total income recorded</span><span>€{{ '%.2f'|format(snapshot.total_household_income_expected) }}</span></p>
+  <p class="summary-row"><span>Household contributions expected</span><span>€{{ '%.2f'|format(snapshot.household_contributions_expected) }}</span></p>
+  <p class="summary-row"><span>Contributions received</span><span>€{{ '%.2f'|format(snapshot.household_contributions_received) }}</span></p>
+  <p class="summary-row"><span>Income excluded from joint cash</span><span>€{{ '%.2f'|format(snapshot.income_excluded_from_forecast) }}</span></p>
+  <p class="summary-row"><span>Confirmed spending paid</span><span>€{{ '%.2f'|format(snapshot.actual_expenditure) }}</span></p>
+  <p class="summary-row"><span>Estimated non-visible spending</span><span>€{{ '%.2f'|format(snapshot.estimated_household_spending) }}</span></p>
+  <p class="summary-row"><span>Lowest forecast balance before top-up</span><span>€{{ '%.2f'|format(snapshot.minimum_projected_balance) }}</span></p>
+  <p class="summary-row"><span>Next expected household income</span><span>{{ snapshot.next_income_date or 'Not configured' }}</span></p>
+</div></details></section>
 
 <section class="panel mb-6"><details><summary class="panel-title">Income calculation</summary><ul class="mt-3 space-y-2 text-sm">{% for row in snapshot.income_calculation %}<li>{{ row.schedule.display_name }} on {{ row.date }}: total pay {{ '%.2f'|format(row.total) }}; household contribution included {{ '%.2f'|format(row.household) }}; personal, savings, or unallocated {{ '%.2f'|format(row.total - row.household) }}.</li>{% else %}<li>No expected income occurs in this view.</li>{% endfor %}</ul><p class="text-sm mt-3">Only recorded household contributions are included in available-cash forecasts. Personal, savings, and unknown allocations remain outside the household operating budget.</p><a class="pill-link mt-3 inline-block" href="{{ url_for('forecast.income_allocations') }}">Manage income allocations</a></details></section>
 
