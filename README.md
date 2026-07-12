@@ -194,6 +194,21 @@ The Forecast page keeps estimated planning data separate from actual transaction
 
 Forecast and sinking-fund values are estimates for planning, not definitive financial advice. Creating forecast rows never creates actual transaction records.
 
+## Daily Financial Health
+
+The Daily Health page provides a date-selectable, read-only calculation of actual activity and upcoming forecast events. It includes:
+
+- Previous/next day, today, next-payday, end-of-month, 30-day, and 90-day views.
+- Actual balance, income, and spending alongside clearly labelled forecast and estimated values.
+- A user-configured household safety buffer used only as a planning threshold.
+- Expected, matched, partially matched, overdue, skipped, and cancelled payment states.
+- Read-only transaction-match suggestions that require explicit review before being saved.
+- Weekly, fortnightly, monthly, and payday-based variable household budgets.
+- Explainable health states and deterministic guidance linked to visible evidence.
+- High, moderate, low, or insufficient data-confidence explanations.
+
+Daily financial-health results are calculations rather than persisted transactions. Recommendations are household cash-planning suggestions, not regulated investment, pension, insurance, or credit advice.
+
 ## Request Security
 
 CSRF protection is enabled by default for every state-changing form. Tests disable CSRF only through `TestConfig`; production and local development retain protection.

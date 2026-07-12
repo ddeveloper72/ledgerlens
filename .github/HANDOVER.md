@@ -264,3 +264,11 @@ Latest validation:
 - Preserve existing read-only GET, reviewed recurrence, event-history savings, migration, CSRF, and forecasting work.
 - Close remaining gaps in monetary parsing, recurrence evidence, reporting periods, and data-completeness reporting.
 - Add generic regression tests, update documentation, run the full suite, and scan staged changes for private data before committing.
+
+## 12) Phase 3B Implementation Plan
+
+- Reuse the existing Decimal schedule expansion and keep selected-date GET calculations read-only.
+- Add generic local models for a household safety buffer, estimated variable budgets, and reviewed payment reconciliation.
+- Generate financial-health states, confidence explanations, and deterministic guidance from visible evidence.
+- Provide an accessible date timeline with explicit labels and review actions.
+- Validate migrations, tests, live startup, privacy, and staged content before incremental commits.
