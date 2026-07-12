@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.models import (
-    Account, HouseholdForecastSetting, IncomeSchedule, Merchant, PaymentReconciliation,
+    Account, HouseholdForecastSetting, IncomeAllocation, IncomeSchedule, Merchant, PaymentReconciliation,
     PlannedCommitment, RecurringBill, Transaction, User, VariableBudget,
 )
 from app.services.daily_financial_health_service import build_daily_financial_health
@@ -23,12 +23,22 @@ def add_transaction(account, when, amount, description="Example transaction", **
     db.session.add(row); db.session.flush(); return row
 
 
+def add_household_income(account, amount, when, frequency="fortnightly"):
+    schedule = IncomeSchedule(display_name="Example Income", account_id=account.id,
+        amount=Decimal(amount), frequency=frequency, next_expected_date=when, active=True,
+        availability_classification="fully_available")
+    db.session.add(schedule); db.session.flush()
+    db.session.add(IncomeAllocation(income_schedule_id=schedule.id, allocation_type="household_contribution",
+        amount=Decimal(amount), destination_account_id=account.id, effective_from=when,
+        frequency=frequency, status="confirmed", source_type="manual"))
+    return schedule
+
+
 def test_selected_date_before_income_and_five_day_bill(app):
     with app.app_context():
         account = setup_account()
         add_transaction(account, date(2026, 1, 10), "1000.00")
-        db.session.add(IncomeSchedule(display_name="Example Income", account_id=account.id,
-            amount=Decimal("500.00"), frequency="fortnightly", next_expected_date=date(2026, 1, 20), active=True))
+        add_household_income(account, "500.00", date(2026, 1, 20))
         merchant = Merchant(name="Example Essential Service"); db.session.add(merchant); db.session.flush()
         db.session.add(RecurringBill(merchant_id=merchant.id, display_name="Example Bill",
             expected_amount=Decimal("200.00"), amount_tolerance=Decimal("0.00"), cadence="monthly",
@@ -48,10 +58,8 @@ def test_internal_transfer_is_excluded_and_variable_budget_is_estimated(app):
         account = setup_account()
         add_transaction(account, date(2026, 1, 10), "500.00")
         add_transaction(account, date(2026, 1, 10), "999.00", internal_transfer=True)
-        db.session.add_all([
-            IncomeSchedule(display_name="Example Income", account_id=account.id, amount=Decimal("100.00"), frequency="fortnightly", next_expected_date=date(2026, 1, 20), active=True),
-            VariableBudget(display_name="Example Grocery Estimate", amount=Decimal("30.00"), frequency="weekly", next_expected_date=date(2026, 1, 12), essential=True, active=True),
-        ])
+        add_household_income(account, "100.00", date(2026, 1, 20))
+        db.session.add(VariableBudget(display_name="Example Grocery Estimate", amount=Decimal("30.00"), frequency="weekly", next_expected_date=date(2026, 1, 12), essential=True, active=True))
         db.session.commit()
         before = Transaction.query.count()
         result = build_daily_financial_health(db.session, date(2026, 1, 10))
@@ -64,11 +72,8 @@ def test_internal_transfer_is_excluded_and_variable_budget_is_estimated(app):
 def test_negative_and_below_buffer_states_generate_guidance(app):
     with app.app_context():
         account = setup_account(); add_transaction(account, date(2026, 1, 10), "100.00")
-        db.session.add_all([
-            HouseholdForecastSetting(safety_buffer=Decimal("80.00")),
-            IncomeSchedule(display_name="Example Income", account_id=account.id, amount=Decimal("100.00"), frequency="irregular", next_expected_date=date(2026, 1, 20), active=True),
-            PlannedCommitment(display_name="Example Essential", amount=Decimal("150.00"), frequency="one-off", next_expected_date=date(2026, 1, 15), active=True, commitment_type="bill"),
-        ])
+        add_household_income(account, "100.00", date(2026, 1, 20), "irregular")
+        db.session.add_all([HouseholdForecastSetting(safety_buffer=Decimal("80.00")), PlannedCommitment(display_name="Example Essential", amount=Decimal("150.00"), frequency="one-off", next_expected_date=date(2026, 1, 15), active=True, commitment_type="bill")])
         db.session.commit()
         result = build_daily_financial_health(db.session, date(2026, 1, 10))
         assert result["state"] == "critical"
@@ -124,10 +129,8 @@ def test_selected_date_boundary_and_payday_budget(app):
         add_transaction(account, date(2026, 1, 9), "40.00")
         add_transaction(account, date(2026, 1, 10), "60.00")
         add_transaction(account, date(2026, 1, 11), "80.00")
-        db.session.add_all([
-            IncomeSchedule(display_name="Example Income", account_id=account.id, amount=Decimal("200.00"), frequency="fortnightly", next_expected_date=date(2026, 1, 20), active=True),
-            VariableBudget(display_name="Example Payday Budget", amount=Decimal("25.00"), frequency="payday", next_expected_date=date(2026, 1, 20), active=True),
-        ])
+        add_household_income(account, "200.00", date(2026, 1, 20))
+        db.session.add(VariableBudget(display_name="Example Payday Budget", amount=Decimal("25.00"), frequency="payday", next_expected_date=date(2026, 1, 20), active=True))
         db.session.commit()
         selected = build_daily_financial_health(db.session, date(2026, 1, 10))
         assert selected["balance"] == Decimal("100.00")
