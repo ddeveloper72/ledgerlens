@@ -82,6 +82,10 @@ Optional columns:
 
 Supported date formats include `YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY`, and `DD-MM-YYYY`.
 
+Every upload requires selecting its destination financial account. Before creating a batch, LedgerLens compares exact transaction identities across existing accounts and blocks the upload when the statement strongly overlaps a different account.
+
+For statements imported before this guard existed, the Imports page shows verified later cross-batch duplicates. **Exclude Verified Duplicates** preserves the raw rows and import history while removing those later duplicates from balances, reviews, recurrence, and analytics. Duplicate matching requires the same account, date, amount, and cleaned description; same-batch repeated transactions are not automatically excluded.
+
 ## Running Tests
 
 ```bash

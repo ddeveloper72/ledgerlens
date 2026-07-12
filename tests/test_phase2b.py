@@ -12,7 +12,8 @@ from app.models import (
 )
 from app.services.completeness_service import data_completeness_report
 from app.services.credit_union_internal import mark_credit_union_internal_movements
-from app.services.csv_import import import_transactions
+from app.services.csv_import import CSVImportError, import_transactions
+from app.services.duplicate_maintenance import exclude_verified_duplicates, verified_duplicate_rows
 from app.services.money import parse_money
 from app.services.imports.paypal_import import (
     exclude_legacy_paypal_internal_rows,
@@ -366,3 +367,48 @@ def test_review_matching_pattern_updates_reference_variants(client, app):
         updated = Transaction.query.order_by(Transaction.id).all()
         assert all(row.category and row.category.name == "Utilities" for row in updated)
         assert all(row.review_state == "reviewed" for row in updated)
+
+
+def test_duplicate_maintenance_excludes_only_later_cross_batch_rows(app):
+    with app.app_context():
+        account = make_account()
+        from app.models import ImportBatch
+
+        first_batch = ImportBatch(source_filename="first.csv", row_count=1)
+        later_batch = ImportBatch(source_filename="later.csv", row_count=2)
+        db.session.add_all([first_batch, later_batch])
+        db.session.flush()
+        common = {"account_id": account.id, "posted_date": date(2026, 1, 1), "original_description": "Example Payment", "cleaned_description": "Example Payment", "amount": Decimal("-10.00")}
+        original = Transaction(import_batch_id=first_batch.id, **common)
+        duplicate = Transaction(import_batch_id=later_batch.id, **common)
+        same_batch_only = Transaction(account_id=account.id, import_batch_id=later_batch.id, posted_date=date(2026, 1, 2), original_description="Same Batch", cleaned_description="Same Batch", amount=Decimal("-5.00"))
+        same_batch_only_two = Transaction(account_id=account.id, import_batch_id=later_batch.id, posted_date=date(2026, 1, 2), original_description="Same Batch", cleaned_description="Same Batch", amount=Decimal("-5.00"))
+        db.session.add_all([original, duplicate, same_batch_only, same_batch_only_two])
+        db.session.commit()
+        assert verified_duplicate_rows(db.session) == [duplicate]
+        assert exclude_verified_duplicates(db.session) == 1
+        db.session.commit()
+        assert Transaction.query.count() == 4
+        assert duplicate.excluded_from_analysis is True
+        assert duplicate.exclusion_reason == "Duplicate of earlier imported transaction"
+        assert original.excluded_from_analysis is False
+        assert same_batch_only.excluded_from_analysis is False
+        assert exclude_verified_duplicates(db.session) == 0
+
+
+def test_import_preflight_blocks_statement_that_matches_another_account(app):
+    with app.app_context():
+        user = User(name="Overlap User")
+        db.session.add(user)
+        db.session.flush()
+        correct = Account(user_id=user.id, name="Correct Account", account_type="checking")
+        wrong = Account(user_id=user.id, name="Wrong Account", account_type="checking")
+        db.session.add_all([correct, wrong])
+        db.session.flush()
+        for day in range(1, 4):
+            db.session.add(Transaction(account_id=correct.id, posted_date=date(2026, 1, day), original_description=f"Example {day}", cleaned_description=f"Example {day}", amount=Decimal("-10.00")))
+        db.session.commit()
+        content = b"date,description,amount\n2026-01-01,Example 1,-10.00\n2026-01-02,Example 2,-10.00\n2026-01-03,Example 3,-10.00\n"
+        with pytest.raises(CSVImportError, match="Correct Account"):
+            import_transactions(FileStorage(stream=io.BytesIO(content), filename="overlap.csv"), wrong.id)
+        assert Transaction.query.filter_by(account_id=wrong.id).count() == 0

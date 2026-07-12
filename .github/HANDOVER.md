@@ -233,3 +233,13 @@ Latest validation:
 - Deactivation preserves all source transactions and their reviewed classifications
 - Internal/excluded-only merchant alerts are retired during explicit maintenance actions
 - Applied locally: VDP-LEAP CARD APP and EFT DISBUR alerts deactivated; LEAP transactions remain reviewed Transport/personal
+
+### Overlapping statement and duplicate repair
+- Import form now requires an explicit destination account instead of silently creating/using Default Account
+- Import preflight blocks statements with three or more exact overlaps in another account when that overlap exceeds the selected account
+- Added non-destructive verified duplicate maintenance for exact cross-batch matches
+- Same-batch identical rows are deliberately not auto-excluded
+- Applied locally after backup `ledgerlens_dev.pre_duplicate_repair_20260712.sqlite3`:
+  - Batch 6 assigned to Primary Account; 48 verified duplicates excluded and 10 new rows retained
+  - Batch 7 assigned to Joint; 71 verified duplicates excluded and 17 new rows retained
+  - Raw new-batch rows preserved: 146; active new rows requiring review: 27

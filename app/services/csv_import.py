@@ -1,5 +1,6 @@
 import csv
 import io
+from collections import defaultdict
 
 from app.extensions import db
 from app.models import Account, ImportBatch, StatementImport, Transaction
@@ -217,6 +218,37 @@ def import_transactions(
         raise CSVImportError(
             "Account key was not detected for this statement source. Please provide an account key in the import form."
         )
+
+    # Guard against silently importing an overlapping statement into the wrong account.
+    dates = [row["posted_date"] for row in rows]
+    existing_rows = (
+        Transaction.query.filter(
+            Transaction.posted_date >= min(dates),
+            Transaction.posted_date <= max(dates),
+        ).all()
+    )
+    identities_by_account = defaultdict(set)
+    for existing in existing_rows:
+        identities_by_account[existing.account_id].add(
+            (existing.posted_date, existing.amount, existing.cleaned_description)
+        )
+    overlap = {
+        existing_account_id: sum(
+            (row["posted_date"], row["amount"], row["cleaned_description"]) in identities
+            for row in rows
+        )
+        for existing_account_id, identities in identities_by_account.items()
+    }
+    selected_overlap = overlap.get(account_id, 0)
+    other_matches = [(count, existing_account_id) for existing_account_id, count in overlap.items() if existing_account_id != account_id]
+    if other_matches:
+        best_count, best_account_id = max(other_matches)
+        if best_count >= 3 and best_count > selected_overlap:
+            best_account = db.session.get(Account, best_account_id)
+            raise CSVImportError(
+                f"This statement overlaps {best_count} existing transaction(s) in "
+                f"'{best_account.name}'. Select that account or verify the statement before importing."
+            )
 
     import_batch = ImportBatch(source_filename=file_storage.filename, row_count=0)
     db.session.add(import_batch)

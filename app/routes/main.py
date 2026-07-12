@@ -29,6 +29,7 @@ from app.services.imports.paypal_import import (
 )
 from app.services.credit_union_internal import mark_credit_union_internal_movements
 from app.services.description_patterns import description_pattern_key
+from app.services.duplicate_maintenance import exclude_verified_duplicates, verified_duplicate_rows
 from app.services.money import parse_money
 from app.services.period_service import apply_transaction_period, resolve_period
 from app.services.recurrence_service import (
@@ -770,7 +771,11 @@ def imports():
             flash("Please choose a CSV or PDF statement file.", "error")
             return redirect(url_for("main.imports"))
 
-        account = get_or_create_default_account()
+        account_id = request.form.get("account_id", type=int)
+        account = db.session.get(Account, account_id) if account_id else None
+        if not account:
+            flash("Select the financial account this statement belongs to.", "error")
+            return redirect(url_for("main.imports"))
 
         try:
             result = import_transactions(
@@ -853,6 +858,8 @@ def imports():
         import_max_pages=max_pages,
         source_needs_account_key=SOURCE_NEEDS_ACCOUNT_KEY,
         statement_type_options=statement_type_options,
+        accounts=Account.query.order_by(Account.name).all(),
+        duplicate_candidate_count=len(verified_duplicate_rows(db.session)),
     )
 
 
@@ -862,6 +869,15 @@ def amend_import_metadata():
     amended = amend_existing_import_metadata(db.session)
     db.session.commit()
     flash(f"Import metadata maintenance complete: {amended} batch(es) amended.", "success")
+    return redirect(url_for("main.imports"))
+
+
+@bp.route("/imports/exclude-duplicates", methods=["POST"])
+def exclude_duplicate_import_rows():
+    """Explicitly exclude verified later cross-batch duplicates without deleting raw rows."""
+    excluded = exclude_verified_duplicates(db.session)
+    db.session.commit()
+    flash(f"Excluded {excluded} verified duplicate transaction(s).", "success")
     return redirect(url_for("main.imports"))
 
 
