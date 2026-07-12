@@ -217,6 +217,8 @@ Availability classifications distinguish fully available, contribution-only, sum
 
 Contribution matching is reviewable. LedgerLens can propose a matching incoming transaction within the destination account, but the user must explicitly confirm matched, partially matched, overdue, skipped, or cancelled status. A received contribution is reflected through the actual account transaction and is not added again as expected income.
 
+An income schedule and its contribution may have different timing. Choose **Ad hoc / irregular** when household top-ups respond to immediate need rather than following payday. Leave the amount and percentage blank for an actual-only allocation: LedgerLens assumes no future top-up and offers unmatched incoming destination-account transactions for explicit contribution review.
+
 Estimated variable budgets continue to represent shared costs paid through accounts that are not imported. Private spending is not subtracted merely because personal income remains outside the household allocation.
 
 ## Request Security

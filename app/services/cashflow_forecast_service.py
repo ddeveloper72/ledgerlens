@@ -68,7 +68,8 @@ def build_cashflow_forecast(
                 from app.services.income_allocation_service import income_breakdown
                 contribution = income_breakdown(schedule, event_date)["household"]
                 if contribution == 0:
-                    allocation_warnings.append(f"{schedule.display_name} has no household contribution allocation; its income is excluded from available cash.")
+                    irregular = any(row.allocation_type == "household_contribution" and row.frequency == "irregular" and row.status != "inactive" for row in schedule.allocations)
+                    allocation_warnings.append(f"{schedule.display_name} uses ad hoc household contributions; no future top-up is assumed." if irregular else f"{schedule.display_name} has no household contribution allocation; its income is excluded from available cash.")
             else:
                 contribution = gross
             forecastable_income += contribution

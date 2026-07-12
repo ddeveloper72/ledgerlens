@@ -45,7 +45,7 @@ def income_occurrences(schedule, start_date, end_date):
 
 def income_breakdown(schedule, event_date):
     total = money(schedule.amount)
-    household = sum((allocation_amount(row, total) for row in active_allocations(schedule, event_date, "household_contribution")), Decimal("0.00"))
+    household = sum((allocation_amount(row, total) for row in active_allocations(schedule, event_date, "household_contribution") if row.frequency != "irregular"), Decimal("0.00"))
     personal = sum((allocation_amount(row, total) for row in active_allocations(schedule, event_date, "personal")), Decimal("0.00"))
     savings = sum((allocation_amount(row, total) for row in active_allocations(schedule, event_date, "savings")), Decimal("0.00"))
     known = min(total, household + personal + savings)
@@ -82,13 +82,39 @@ def contribution_occurrences(session, schedules, start_date, end_date, selected_
     for schedule in schedules:
         if not schedule.active:
             continue
-        for event_date in income_occurrences(schedule, start_date, end_date):
-            breakdown = income_breakdown(schedule, event_date)
-            allocations = active_allocations(schedule, event_date, "household_contribution")
-            for allocation in allocations:
+        allocations = [row for row in schedule.allocations if row.allocation_type == "household_contribution" and row.status != "inactive"]
+        for allocation in allocations:
+            if allocation.frequency == "irregular":
+                dates = [row.expected_date for row in saved_rows if row.income_allocation_id == allocation.id and start_date <= row.expected_date <= end_date]
+            else:
+                dates = occurrence_dates(allocation.effective_from, allocation.frequency, start_date, end_date, allocation.effective_to)
+            for event_date in dates:
                 amount = allocation_amount(allocation, schedule.amount)
                 reconciliation = saved.get((allocation.id, event_date))
+                if allocation.frequency == "irregular" and reconciliation:
+                    amount = money(reconciliation.expected_amount)
                 status = reconciliation.status if reconciliation else ("overdue" if event_date < selected_date else "expected")
                 proposed, proposed_status = proposed_contribution_match(session, allocation, event_date, amount)
-                results.append({"schedule": schedule, "allocation": allocation, "date": event_date, "total_income": breakdown["total"], "amount": amount, "status": status, "matched_transaction": reconciliation.matched_transaction if reconciliation else None, "proposed_transaction": proposed, "proposed_status": proposed_status})
+                results.append({"schedule": schedule, "allocation": allocation, "date": event_date, "total_income": money(schedule.amount), "amount": amount, "status": status, "matched_transaction": reconciliation.matched_transaction if reconciliation else None, "proposed_transaction": proposed, "proposed_status": proposed_status})
+    return results
+
+
+def ad_hoc_contribution_candidates(session, schedules, start_date, end_date):
+    """Return unmatched incoming rows for explicit review against irregular allocations."""
+    matched_ids = {row.matched_transaction_id for row in session.query(ContributionReconciliation).filter(ContributionReconciliation.matched_transaction_id.isnot(None)).all()}
+    results = []
+    for schedule in schedules:
+        for allocation in schedule.allocations:
+            if allocation.allocation_type != "household_contribution" or allocation.frequency != "irregular" or allocation.status == "inactive" or not allocation.destination_account_id:
+                continue
+            rows = session.query(Transaction).filter(
+                Transaction.account_id == allocation.destination_account_id,
+                Transaction.amount > 0,
+                Transaction.excluded_from_analysis.is_(False),
+                Transaction.posted_date >= max(start_date, allocation.effective_from),
+                Transaction.posted_date <= min(end_date, allocation.effective_to or end_date),
+            ).order_by(Transaction.posted_date.desc(), Transaction.id.desc()).all()
+            for transaction in rows:
+                if transaction.id not in matched_ids:
+                    results.append({"schedule": schedule, "allocation": allocation, "transaction": transaction})
     return results

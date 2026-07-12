@@ -96,11 +96,12 @@ def build_daily_financial_health(session, selected_date, horizon_days=30):
             if breakdown["household"]:
                 income_events.append({"date": value, "name": f"{item.display_name} household contribution", "amount": breakdown["household"], "type": "income", "label": "Forecast"})
             else:
-                allocation_reasons.append(f"{item.display_name} has no household contribution allocation; its income is excluded from available cash.")
+                irregular = any(row.allocation_type == "household_contribution" and row.frequency == "irregular" and row.status != "inactive" for row in item.allocations)
+                allocation_reasons.append(f"{item.display_name} uses ad hoc contributions; no future top-up is assumed." if irregular else f"{item.display_name} has no household contribution allocation; its income is excluded from available cash.")
     all_contributions = contribution_occurrences(session, incomes, selected_date - timedelta(days=35), end_date, selected_date)
     received_contributions = [row for row in all_contributions if row["status"] in {"matched", "partially_matched"} and row["date"] <= selected_date]
     due_contributions = [row for row in all_contributions if row["status"] in {"expected", "overdue", "partially_matched"} and row["date"] <= end_date]
-    if any(row["allocation"].status == "estimated" for row in all_contributions): allocation_reasons.append("A household contribution is estimated rather than confirmed.")
+    if any(allocation.allocation_type == "household_contribution" and allocation.status == "estimated" for schedule in incomes for allocation in schedule.allocations): allocation_reasons.append("A household contribution is estimated rather than confirmed.")
     if any(row["status"] == "overdue" for row in due_contributions): allocation_reasons.append("An expected household contribution is overdue and unmatched.")
     next_income = min((row["date"] for row in income_events), default=None)
     forecast_end = next_income or end_date

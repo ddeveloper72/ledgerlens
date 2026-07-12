@@ -19,7 +19,7 @@ from app.services.daily_financial_health_service import build_daily_financial_he
 from app.services.income_allocation_service import (
     ALLOCATION_STATUSES, ALLOCATION_TYPES, AVAILABILITY_CLASSES,
     RECONCILIATION_STATUSES as CONTRIBUTION_RECONCILIATION_STATUSES,
-    SOURCE_TYPES, contribution_occurrences,
+    SOURCE_TYPES, ad_hoc_contribution_candidates, contribution_occurrences,
 )
 
 bp = Blueprint("forecast", __name__)
@@ -350,10 +350,11 @@ def income_allocations():
     schedules = IncomeSchedule.query.order_by(IncomeSchedule.next_expected_date).all()
     today = date.today()
     contributions = contribution_occurrences(db.session, schedules, today - timedelta(days=45), today + timedelta(days=90), today)
+    ad_hoc_candidates = ad_hoc_contribution_candidates(db.session, schedules, today - timedelta(days=90), today)
     return render_template("income_allocations.html", schedules=schedules, accounts=Account.query.order_by(Account.name).all(),
         contributions=contributions, allocation_types=ALLOCATION_TYPES, allocation_statuses=ALLOCATION_STATUSES,
         availability_classes=AVAILABILITY_CLASSES, source_types=SOURCE_TYPES,
-        reconciliation_statuses=CONTRIBUTION_RECONCILIATION_STATUSES, today=today)
+        reconciliation_statuses=CONTRIBUTION_RECONCILIATION_STATUSES, ad_hoc_candidates=ad_hoc_candidates, today=today)
 
 
 @bp.route("/income-allocations/<int:schedule_id>", methods=["POST"])
@@ -369,7 +370,10 @@ def save_income_allocation(schedule_id, allocation_id=None):
             raise ValueError("Select supported income allocation options.")
         amount_text = request.form.get("amount", "").strip()
         percentage_text = request.form.get("percentage", "").strip()
-        if bool(amount_text) == bool(percentage_text): raise ValueError("Enter either a fixed amount or a percentage.")
+        frequency = request.form.get("frequency") if request.form.get("frequency") in INCOME_FREQUENCIES else schedule.frequency
+        allows_actual_only = allocation_type == "household_contribution" and frequency == "irregular"
+        if bool(amount_text) and bool(percentage_text): raise ValueError("Enter a fixed amount or a percentage, not both.")
+        if not amount_text and not percentage_text and not allows_actual_only: raise ValueError("Enter either a fixed amount or a percentage.")
         allocation = db.session.get(IncomeAllocation, allocation_id) if allocation_id else IncomeAllocation(income_schedule_id=schedule.id)
         if allocation_id and (not allocation or allocation.income_schedule_id != schedule.id): raise ValueError("Income allocation not found.")
         allocation.allocation_type = allocation_type
@@ -381,7 +385,7 @@ def save_income_allocation(schedule_id, allocation_id=None):
         allocation.effective_from = _date_value("effective_from")
         allocation.effective_to = _date_value("effective_to", required=False)
         if allocation.effective_to and allocation.effective_to < allocation.effective_from: raise ValueError("Effective end cannot precede its start.")
-        allocation.frequency = request.form.get("frequency") if request.form.get("frequency") in INCOME_FREQUENCIES else schedule.frequency
+        allocation.frequency = frequency
         allocation.status = status; allocation.source_type = source_type
         schedule.availability_classification = availability
         db.session.add(allocation); db.session.commit(); flash("Income allocation saved without changing total expected pay.", "success")

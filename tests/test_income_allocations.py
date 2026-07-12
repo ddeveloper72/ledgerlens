@@ -8,7 +8,7 @@ from app.models import (
 )
 from app.services.cashflow_forecast_service import build_cashflow_forecast
 from app.services.daily_financial_health_service import build_daily_financial_health
-from app.services.income_allocation_service import contribution_occurrences, income_breakdown
+from app.services.income_allocation_service import ad_hoc_contribution_candidates, contribution_occurrences, income_breakdown
 
 
 def setup_accounts():
@@ -25,7 +25,7 @@ def schedule_with_allocations(account, total="2000.00", contribution="1000.00", 
         active=True, availability_classification="contribution_only")
     db.session.add(schedule); db.session.flush()
     allocation = IncomeAllocation(income_schedule_id=schedule.id, allocation_type="household_contribution",
-        amount=Decimal(contribution), destination_account_id=account.id, effective_from=date(2026, 1, 1),
+        amount=Decimal(contribution), destination_account_id=account.id, effective_from=date(2026, 1, 20),
         frequency="fortnightly", status=status, source_type="manual")
     db.session.add(allocation); db.session.flush()
     return schedule, allocation
@@ -129,3 +129,44 @@ def test_income_allocation_get_is_read_only(client, app):
     with app.app_context():
         schedule = IncomeSchedule.query.one()
         assert (IncomeAllocation.query.count(), ContributionReconciliation.query.count(), schedule.amount) == before
+
+
+def test_ad_hoc_allocation_does_not_assume_fortnightly_topup(app):
+    with app.app_context():
+        household, _ = setup_accounts()
+        schedule = IncomeSchedule(display_name="Example Irregular Contributor", account_id=household.id,
+            amount=Decimal("800.00"), frequency="fortnightly", next_expected_date=date(2026, 1, 20),
+            active=True, availability_classification="contribution_only")
+        db.session.add(schedule); db.session.flush()
+        db.session.add(IncomeAllocation(income_schedule_id=schedule.id, allocation_type="household_contribution",
+            amount=None, percentage=None, destination_account_id=household.id, effective_from=date(2026, 1, 1),
+            frequency="irregular", status="confirmed", source_type="manual")); db.session.flush()
+        result = forecast(schedule)
+        assert result["total_recorded_income"] == Decimal("800.00")
+        assert result["forecastable_household_income"] == Decimal("0.00")
+        assert result["events"] == []
+        assert any("ad hoc" in warning.lower() for warning in result["warnings"])
+
+
+def test_ad_hoc_incoming_transfer_requires_review_and_is_not_duplicated(app):
+    with app.app_context():
+        household, _ = setup_accounts()
+        schedule = IncomeSchedule(display_name="Example Irregular Contributor", account_id=household.id,
+            amount=Decimal("800.00"), frequency="fortnightly", next_expected_date=date(2026, 1, 20),
+            active=True, availability_classification="contribution_only")
+        db.session.add(schedule); db.session.flush()
+        allocation = IncomeAllocation(income_schedule_id=schedule.id, allocation_type="household_contribution",
+            destination_account_id=household.id, effective_from=date(2026, 1, 1), frequency="irregular",
+            status="confirmed", source_type="manual")
+        incoming = Transaction(account_id=household.id, posted_date=date(2026, 1, 18), original_description="Example Top Up",
+            cleaned_description="Example Top Up", amount=Decimal("75.25"), review_state="reviewed")
+        db.session.add_all([allocation, incoming]); db.session.commit()
+        candidates = ad_hoc_contribution_candidates(db.session, [schedule], date(2026, 1, 1), date(2026, 1, 31))
+        assert candidates[0]["transaction"].id == incoming.id
+        db.session.add(ContributionReconciliation(income_allocation_id=allocation.id, expected_date=incoming.posted_date,
+            expected_amount=incoming.amount, status="matched", matched_transaction_id=incoming.id)); db.session.commit()
+        assert ad_hoc_contribution_candidates(db.session, [schedule], date(2026, 1, 1), date(2026, 1, 31)) == []
+        result = build_daily_financial_health(db.session, date(2026, 1, 18))
+        assert result["joint_account_available_balance"] == Decimal("75.25")
+        assert result["household_contributions_received"] == Decimal("75.25")
+        assert result["projected_pre_income_balance"] is None
