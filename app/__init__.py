@@ -31,6 +31,8 @@ def create_app(config_class=Config):
         Category,
         ImportBatch,
         IncomeSchedule,
+        IncomeAllocation,
+        ContributionReconciliation,
         Merchant,
         MerchantAlias,
         RecurringCandidate,

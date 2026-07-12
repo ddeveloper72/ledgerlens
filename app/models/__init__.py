@@ -176,9 +176,45 @@ class IncomeSchedule(db.Model):
     frequency = db.Column(db.String(20), nullable=False)
     next_expected_date = db.Column(db.Date, nullable=False)
     active = db.Column(db.Boolean, nullable=False, default=True)
+    availability_classification = db.Column(db.String(30), nullable=False, default="not_available")
     created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
 
     account = db.relationship("Account")
+
+
+class IncomeAllocation(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    income_schedule_id = db.Column(db.Integer, db.ForeignKey("income_schedule.id"), nullable=False)
+    allocation_type = db.Column(db.String(30), nullable=False)
+    amount = db.Column(db.Numeric(12, 2), nullable=True)
+    percentage = db.Column(db.Numeric(5, 2), nullable=True)
+    destination_account_id = db.Column(db.Integer, db.ForeignKey("account.id"), nullable=True)
+    effective_from = db.Column(db.Date, nullable=False)
+    effective_to = db.Column(db.Date, nullable=True)
+    frequency = db.Column(db.String(20), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default="estimated")
+    source_type = db.Column(db.String(20), nullable=False, default="manual")
+    created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+    income_schedule = db.relationship("IncomeSchedule", backref="allocations")
+    destination_account = db.relationship("Account")
+
+
+class ContributionReconciliation(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    income_allocation_id = db.Column(db.Integer, db.ForeignKey("income_allocation.id"), nullable=False)
+    expected_date = db.Column(db.Date, nullable=False)
+    expected_amount = db.Column(db.Numeric(12, 2), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default="expected")
+    matched_transaction_id = db.Column(db.Integer, db.ForeignKey("transaction.id"), nullable=True)
+    reviewed_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+
+    income_allocation = db.relationship("IncomeAllocation", backref="reconciliations")
+    matched_transaction = db.relationship("Transaction")
+
+    __table_args__ = (db.UniqueConstraint("income_allocation_id", "expected_date", name="uq_contribution_occurrence"),)
 
 
 class PlannedCommitment(db.Model):
