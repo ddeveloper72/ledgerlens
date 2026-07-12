@@ -13,7 +13,9 @@
     <article class="metric-card"><p class="metric-label">Actual combined balance</p><p class="metric-value">{{ '%.2f'|format(actual_opening) }}</p></article>
     <article class="metric-card"><p class="metric-label">Estimated opening balance</p><p class="metric-value">{{ '%.2f'|format(forecast.opening_balance) }}</p></article>
     <article class="metric-card"><p class="metric-label">Next expected payday</p><p class="metric-value">{{ forecast.next_income_date or 'Not configured' }}</p><p class="text-sm">{{ forecast.days_until_payday if forecast.days_until_payday is not none else 'Unknown' }} days</p></article>
-    <article class="metric-card"><p class="metric-label">Forecast income</p><p class="metric-value">{{ '%.2f'|format(forecast.total_expected_income) }}</p></article>
+    <article class="metric-card"><p class="metric-label">Total income recorded</p><p class="metric-value">{{ '%.2f'|format(forecast.total_recorded_income) }}</p></article>
+    <article class="metric-card"><p class="metric-label">Household funding available</p><p class="metric-value">{{ '%.2f'|format(forecast.forecastable_household_income) }}</p></article>
+    <article class="metric-card"><p class="metric-label">Personal / unallocated income</p><p class="metric-value">{{ '%.2f'|format(forecast.income_excluded_from_forecast) }}</p></article>
     <article class="metric-card"><p class="metric-label">Forecast expenditure</p><p class="metric-value">{{ '%.2f'|format(forecast.total_expected_expenditure) }}</p></article>
     <article class="metric-card"><p class="metric-label">Estimated closing balance</p><p class="metric-value">{{ '%.2f'|format(forecast.projected_closing_balance) }}</p></article>
     <article class="metric-card"><p class="metric-label">Minimum projected balance</p><p class="metric-value">{{ '%.2f'|format(forecast.minimum_projected_balance) }}</p><p class="text-sm">{{ forecast.minimum_balance_date }}</p></article>

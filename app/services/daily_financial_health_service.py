@@ -7,14 +7,16 @@ from app.models import (
 )
 from app.services.cashflow_forecast_service import occurrence_dates
 from app.services.financial_guidance_service import generate_financial_guidance
+from app.services.income_allocation_service import contribution_occurrences, income_breakdown
 
 
 def _money(value):
     return Decimal(value or 0).quantize(Decimal("0.01"))
 
 
-def _confidence(session, selected_date, estimated_count):
-    accounts = session.query(Account).all()
+def _confidence(session, selected_date, estimated_count, allocation_reasons=(), account_ids=None):
+    account_query = session.query(Account)
+    accounts = account_query.filter(Account.id.in_(account_ids)).all() if account_ids else account_query.all()
     reasons = []
     if not accounts:
         return {"level": "insufficient", "reasons": ["No accounts are configured."]}
@@ -24,7 +26,8 @@ def _confidence(session, selected_date, estimated_count):
         latest.append(value[0] if value else None)
     if any(value is None for value in latest): reasons.append("One or more accounts have no imported transactions.")
     if any(value and (selected_date - value).days > 45 for value in latest): reasons.append("One or more account imports are stale.")
-    eligible = session.query(Transaction).filter(Transaction.excluded_from_analysis.is_(False), Transaction.internal_transfer.is_(False)).all()
+    eligible_query = session.query(Transaction).filter(Transaction.excluded_from_analysis.is_(False), Transaction.internal_transfer.is_(False))
+    eligible = eligible_query.filter(Transaction.account_id.in_(account_ids)).all() if account_ids else eligible_query.all()
     reviewed = sum(row.review_state == "reviewed" for row in eligible)
     categorised = sum(row.category_id is not None for row in eligible)
     reviewed_pct = Decimal(reviewed * 100) / Decimal(len(eligible)) if eligible else Decimal("0")
@@ -34,6 +37,7 @@ def _confidence(session, selected_date, estimated_count):
     if not session.query(IncomeSchedule).filter_by(active=True).first(): reasons.append("No active income schedule is configured.")
     if not session.query(RecurringBill).filter_by(active=True).first() and not session.query(PlannedCommitment).filter_by(active=True).first(): reasons.append("No confirmed recurring commitments are configured.")
     if estimated_count: reasons.append("The forecast includes estimated variable budgets.")
+    reasons.extend(allocation_reasons)
     if any(value is None for value in latest) or not eligible: level = "insufficient"
     elif len(reasons) >= 3: level = "low"
     elif reasons: level = "moderate"
@@ -67,17 +71,37 @@ def build_daily_financial_health(session, selected_date, horizon_days=30):
     """Calculate an explainable selected-date household position without writes."""
     setting = session.query(HouseholdForecastSetting).order_by(HouseholdForecastSetting.id).first()
     safety_buffer = _money(setting.safety_buffer if setting else 0)
-    actual_rows = session.query(Transaction).filter(Transaction.posted_date <= selected_date, Transaction.excluded_from_analysis.is_(False)).all()
+    incomes = session.query(IncomeSchedule).filter_by(active=True).all()
+    destination_ids = {allocation.destination_account_id for schedule in incomes for allocation in schedule.allocations if allocation.allocation_type == "household_contribution" and allocation.status != "inactive" and allocation.destination_account_id}
+    actual_query = session.query(Transaction).filter(Transaction.posted_date <= selected_date, Transaction.excluded_from_analysis.is_(False))
+    actual_rows = actual_query.filter(Transaction.account_id.in_(destination_ids)).all() if destination_ids else []
     analysis_rows = [row for row in actual_rows if not row.internal_transfer]
     balance = sum((_money(row.amount) for row in analysis_rows), Decimal("0.00"))
     actual_income = sum((_money(row.amount) for row in analysis_rows if row.amount > 0), Decimal("0.00"))
     actual_spend = sum((abs(_money(row.amount)) for row in analysis_rows if row.amount < 0), Decimal("0.00"))
     end_date = selected_date + timedelta(days=horizon_days)
-    incomes = session.query(IncomeSchedule).filter_by(active=True).all()
     income_events = []
+    total_income_expected = Decimal("0.00")
+    household_contributions_expected = Decimal("0.00")
+    income_excluded = Decimal("0.00")
+    income_calculation = []
+    allocation_reasons = []
     for item in incomes:
         for value in occurrence_dates(item.next_expected_date, item.frequency, selected_date + timedelta(days=1), end_date):
-            income_events.append({"date": value, "name": item.display_name, "amount": _money(item.amount), "type": "income", "label": "Forecast"})
+            breakdown = income_breakdown(item, value)
+            total_income_expected += breakdown["total"]
+            household_contributions_expected += breakdown["household"]
+            income_excluded += breakdown["total"] - breakdown["household"]
+            income_calculation.append({"schedule": item, "date": value, **breakdown})
+            if breakdown["household"]:
+                income_events.append({"date": value, "name": f"{item.display_name} household contribution", "amount": breakdown["household"], "type": "income", "label": "Forecast"})
+            else:
+                allocation_reasons.append(f"{item.display_name} has no household contribution allocation; its income is excluded from available cash.")
+    all_contributions = contribution_occurrences(session, incomes, selected_date - timedelta(days=35), end_date, selected_date)
+    received_contributions = [row for row in all_contributions if row["status"] in {"matched", "partially_matched"} and row["date"] <= selected_date]
+    due_contributions = [row for row in all_contributions if row["status"] in {"expected", "overdue", "partially_matched"} and row["date"] <= end_date]
+    if any(row["allocation"].status == "estimated" for row in all_contributions): allocation_reasons.append("A household contribution is estimated rather than confirmed.")
+    if any(row["status"] == "overdue" for row in due_contributions): allocation_reasons.append("An expected household contribution is overdue and unmatched.")
     next_income = min((row["date"] for row in income_events), default=None)
     forecast_end = next_income or end_date
     occurrences = []
@@ -109,7 +133,9 @@ def build_daily_financial_health(session, selected_date, horizon_days=30):
         event["running_balance"] = _money(running)
         if running < minimum: minimum, minimum_date = running, event["date"]
         if next_income and event["date"] == next_income and event["amount"] > 0: pre_income = running - event["amount"]
-    confidence = _confidence(session, selected_date, sum(row["label"] == "Estimated" for row in occurrences))
+    estimated_count = sum(row["label"] == "Estimated" for row in occurrences)
+    if estimated_count: allocation_reasons.append("Some household spending occurs through a non-visible account; estimated costs are used.")
+    confidence = _confidence(session, selected_date, estimated_count, list(dict.fromkeys(allocation_reasons)), destination_ids)
     essential_uncovered = any(row["essential"] and row["status"] == "overdue" for row in outstanding)
     if confidence["level"] == "insufficient": state = "insufficient_data"
     elif minimum < 0: state = "critical"
@@ -121,6 +147,6 @@ def build_daily_financial_health(session, selected_date, horizon_days=30):
     if minimum < safety_buffer: evidence.append(f"The projected minimum {minimum:.2f} is below the configured safety buffer {safety_buffer:.2f}.")
     if overdue: evidence.append(f"{len(overdue)} expected payment(s) are overdue and unmatched.")
     if not evidence: evidence.append("Expected commitments remain covered above the configured safety buffer.")
-    result = {"selected_date": selected_date, "balance": _money(balance), "actual_income": _money(actual_income), "actual_expenditure": _money(actual_spend), "bills_paid": paid, "essential_bills_paid": [row for row in paid if row["essential"]], "outstanding_bills": outstanding, "upcoming_five_days": upcoming, "overdue_commitments": overdue, "next_income_date": next_income, "days_until_income": (next_income - selected_date).days if next_income else None, "projected_pre_income_balance": _money(pre_income) if next_income else None, "minimum_projected_balance": _money(minimum), "minimum_balance_date": minimum_date, "state": state, "evidence": evidence, "data_confidence": confidence, "safety_buffer": safety_buffer, "events": events}
+    result = {"selected_date": selected_date, "balance": _money(balance), "joint_account_available_balance": _money(balance), "actual_income": _money(actual_income), "actual_expenditure": _money(actual_spend), "total_household_income_expected": _money(total_income_expected), "household_contributions_expected": _money(household_contributions_expected), "household_contributions_received": sum((row["amount"] for row in received_contributions), Decimal("0.00")), "household_contributions_due": sum((row["amount"] for row in due_contributions), Decimal("0.00")), "income_excluded_from_forecast": _money(income_excluded), "estimated_household_spending": sum((row["amount"] for row in occurrences if row["label"] == "Estimated" and row["date"] > selected_date), Decimal("0.00")), "income_calculation": income_calculation, "contribution_occurrences": all_contributions, "bills_paid": paid, "essential_bills_paid": [row for row in paid if row["essential"]], "outstanding_bills": outstanding, "upcoming_five_days": upcoming, "overdue_commitments": overdue, "next_income_date": next_income, "days_until_income": (next_income - selected_date).days if next_income else None, "projected_pre_income_balance": _money(pre_income) if next_income else None, "minimum_projected_balance": _money(minimum), "minimum_balance_date": minimum_date, "conservative_projected_balance": _money(running), "state": state, "evidence": evidence, "data_confidence": confidence, "safety_buffer": safety_buffer, "events": events}
     result["recommendations"] = generate_financial_guidance(result)
     return result

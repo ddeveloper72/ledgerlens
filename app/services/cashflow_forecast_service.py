@@ -49,15 +49,32 @@ def occurrence_dates(first_date, frequency, start_date, end_date, item_end_date=
 def build_cashflow_forecast(
     *, opening_balance, start_date, end_date, income_schedules, recurring_bills,
     planned_commitments, one_off_events, latest_actual_date=None, stale_days=45,
+    require_household_allocations=False,
 ):
     """Build an ordered estimated cash-flow projection without creating transactions."""
     opening = _money(opening_balance)
     events = []
+    total_recorded_income = Decimal("0.00")
+    forecastable_income = Decimal("0.00")
+    excluded_income = Decimal("0.00")
+    allocation_warnings = []
     for schedule in income_schedules:
         if not schedule.active:
             continue
         for event_date in occurrence_dates(schedule.next_expected_date, schedule.frequency, start_date, end_date):
-            events.append({"date": event_date, "display_name": schedule.display_name, "amount": _money(schedule.amount), "direction": "income", "source": "Income schedule", "label": "Forecast"})
+            gross = _money(schedule.amount)
+            total_recorded_income += gross
+            if require_household_allocations:
+                from app.services.income_allocation_service import income_breakdown
+                contribution = income_breakdown(schedule, event_date)["household"]
+                if contribution == 0:
+                    allocation_warnings.append(f"{schedule.display_name} has no household contribution allocation; its income is excluded from available cash.")
+            else:
+                contribution = gross
+            forecastable_income += contribution
+            excluded_income += gross - contribution
+            if contribution:
+                events.append({"date": event_date, "display_name": f"{schedule.display_name} household contribution", "amount": contribution, "direction": "income", "source": "Household income allocation", "label": "Forecast"})
     for bill in recurring_bills:
         if not bill.active or not bill.expected_next_date or bill.expected_amount is None:
             continue
@@ -100,6 +117,7 @@ def build_cashflow_forecast(
     warnings = []
     if not any(schedule.active for schedule in income_schedules):
         warnings.append("No active income schedule is configured; next-payday results are incomplete.")
+    warnings.extend(dict.fromkeys(allocation_warnings))
     if latest_actual_date is None:
         warnings.append("No actual transaction date is available for completeness checking.")
     elif (start_date - latest_actual_date).days > stale_days:
@@ -108,6 +126,9 @@ def build_cashflow_forecast(
         "events": events,
         "opening_balance": opening,
         "total_expected_income": total_income.quantize(Decimal("0.01")),
+        "total_recorded_income": total_recorded_income.quantize(Decimal("0.01")),
+        "forecastable_household_income": forecastable_income.quantize(Decimal("0.01")),
+        "income_excluded_from_forecast": excluded_income.quantize(Decimal("0.01")),
         "total_expected_expenditure": total_expense.quantize(Decimal("0.01")),
         "projected_closing_balance": running.quantize(Decimal("0.01")),
         "minimum_projected_balance": minimum.quantize(Decimal("0.01")),
