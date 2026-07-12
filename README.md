@@ -38,10 +38,10 @@ pip install -r requirements.txt
 copy .env.example .env
 ```
 
-4. Initialize the development database:
+4. Apply database migrations:
 
 ```bash
-flask --app run.py init-db
+flask --app run.py db upgrade
 ```
 
 5. Start the app:
@@ -66,6 +66,8 @@ Example values are provided in `.env.example`.
 - SQLite is used for local development.
 - Database files are stored under the `instance/` folder by default.
 - The `instance/` folder is ignored by Git.
+- Schema changes are managed with Flask-Migrate/Alembic. Application startup does not create, delete, or alter database tables.
+- Before pulling schema changes, back up the local database and run `flask --app run.py db upgrade`.
 
 ## CSV Import Expectations
 
@@ -93,6 +95,12 @@ pytest -q
 ```
 
 ## Maintenance Commands
+
+Enrich eligible historical bank rows from retained PayPal descriptions:
+
+```bash
+flask --app run.py backfill-paypal-descriptions
+```
 
 Apply the current categorization rules to pending transactions that are still uncategorized:
 
@@ -145,6 +153,24 @@ Financial intelligence is descriptive and may be incomplete; it is not definitiv
 LedgerLens normalizes long numeric reference sequences when comparing reviewed descriptions. When at least two reviewed transactions in the same account share a normalized pattern and unanimously agree on category and household flag, a future reference variant reuses that reviewed classification automatically. The review form also supports **Apply to matching payee pattern**.
 
 Known stable payees can use a canonical merchant identity. For example, changing `AN POST TV LIC` references map to `An Post TV Licence` while retaining the original transaction description for audit purposes.
+
+## Payday Forecasting
+
+The Forecast page keeps estimated planning data separate from actual transactions. It supports:
+
+- Next payday, next 30 days, next 90 days, and custom periods.
+- Weekly, fortnightly, monthly, quarterly, annual, irregular, and one-off schedules where appropriate.
+- Editable income schedules and household commitments.
+- One-off planned income or expenses.
+- Chronological running balances, projected closing balance, and the minimum projected balance.
+- Commitments due before the next configured income.
+- Sinking-fund provisions with an estimated amount per payday.
+
+Forecast and sinking-fund values are estimates for planning, not definitive financial advice. Creating forecast rows never creates actual transaction records.
+
+## Request Security
+
+CSRF protection is enabled by default for every state-changing form. Tests disable CSRF only through `TestConfig`; production and local development retain protection.
 
 ## Project Structure
 

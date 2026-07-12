@@ -243,3 +243,17 @@ Latest validation:
   - Batch 6 assigned to Primary Account; 48 verified duplicates excluded and 10 new rows retained
   - Batch 7 assigned to Joint; 71 verified duplicates excluded and 17 new rows retained
   - Raw new-batch rows preserved: 146; active new rows requiring review: 27
+
+## 10) Phase 3A Payday Forecasting
+
+- Replaced startup `db.create_all()` and runtime schema alteration with Flask-Migrate/Alembic
+- Added baseline and forecast-model migrations; local database stamped at baseline and upgraded without recreation
+- Added global Flask-WTF CSRF protection, enabled outside tests
+- Added IncomeSchedule, PlannedCommitment, OneOffForecastEvent, and SinkingFundProvision models
+- Added a Decimal-only cash-flow forecast service with calendar-aware schedule expansion
+- Added next-payday, 30-day, 90-day, and custom forecast views
+- Added income and commitment management, one-off events, and editable sinking-fund provisions
+- Forecast rows remain separate from actual Transaction records
+- Moved recurring deactivation orchestration into recurrence_service.py
+- Added explicit `backfill-paypal-descriptions` CLI maintenance
+- Created pre-upgrade backup `ledgerlens_dev.pre_phase3a_20260712.sqlite3`
