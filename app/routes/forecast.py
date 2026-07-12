@@ -5,8 +5,9 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from app.extensions import db
 from app.models import (
-    Account, Category, IncomeSchedule, OneOffForecastEvent, PlannedCommitment,
-    HouseholdForecastSetting, PaymentReconciliation, RecurringBill, SavingsGoal,
+    Account, Category, ContributionReconciliation, IncomeAllocation, IncomeSchedule,
+    OneOffForecastEvent, PlannedCommitment, HouseholdForecastSetting,
+    PaymentReconciliation, RecurringBill, SavingsGoal,
     SinkingFundProvision, Transaction, VariableBudget,
 )
 from app.services.cashflow_forecast_service import (
@@ -15,6 +16,11 @@ from app.services.cashflow_forecast_service import (
 from app.services.merchant_service import ensure_category
 from app.services.money import parse_money
 from app.services.daily_financial_health_service import build_daily_financial_health
+from app.services.income_allocation_service import (
+    ALLOCATION_STATUSES, ALLOCATION_TYPES, AVAILABILITY_CLASSES,
+    RECONCILIATION_STATUSES as CONTRIBUTION_RECONCILIATION_STATUSES,
+    SOURCE_TYPES, contribution_occurrences,
+)
 
 bp = Blueprint("forecast", __name__)
 
@@ -36,15 +42,13 @@ def _date_value(name, required=True):
         raise ValueError(f"{name.replace('_', ' ').title()} must be a valid date.") from None
 
 
-def _actual_opening_balance(today):
-    value = (
-        db.session.query(db.func.coalesce(db.func.sum(Transaction.amount), Decimal("0.00")))
-        .filter(
-            Transaction.posted_date <= today,
-            Transaction.excluded_from_analysis.is_(False),
-        )
-        .scalar()
+def _actual_opening_balance(today, account_ids=None):
+    query = db.session.query(db.func.coalesce(db.func.sum(Transaction.amount), Decimal("0.00"))).filter(
+        Transaction.posted_date <= today, Transaction.excluded_from_analysis.is_(False)
     )
+    if account_ids is not None:
+        query = query.filter(Transaction.account_id.in_(account_ids)) if account_ids else query.filter(Transaction.id.is_(None))
+    value = query.scalar()
     return Decimal(value).quantize(Decimal("0.01"))
 
 
@@ -87,18 +91,19 @@ def payday_forecast():
         flash(str(exc), "error")
         view = "next_payday"
         start, end = _forecast_bounds(today, view)
-    actual_opening = _actual_opening_balance(start)
+    incomes = IncomeSchedule.query.order_by(IncomeSchedule.next_expected_date).all()
+    destination_ids = {allocation.destination_account_id for item in incomes for allocation in item.allocations if allocation.allocation_type == "household_contribution" and allocation.status != "inactive" and allocation.destination_account_id}
+    actual_opening = _actual_opening_balance(start, destination_ids)
     try:
         opening = parse_money(request.args.get("opening_balance", str(actual_opening)), allow_negative=True)
     except ValueError as exc:
         flash(str(exc), "error")
         opening = actual_opening
     latest_actual = db.session.query(db.func.max(Transaction.posted_date)).filter(Transaction.excluded_from_analysis.is_(False)).scalar()
-    incomes = IncomeSchedule.query.order_by(IncomeSchedule.next_expected_date).all()
     commitments = PlannedCommitment.query.order_by(PlannedCommitment.next_expected_date).all()
     one_offs = OneOffForecastEvent.query.order_by(OneOffForecastEvent.event_date).all()
     recurring = RecurringBill.query.filter_by(active=True).all()
-    forecast = build_cashflow_forecast(opening_balance=opening, start_date=start, end_date=end, income_schedules=incomes, recurring_bills=recurring, planned_commitments=commitments, one_off_events=one_offs, latest_actual_date=latest_actual)
+    forecast = build_cashflow_forecast(opening_balance=opening, start_date=start, end_date=end, income_schedules=incomes, recurring_bills=recurring, planned_commitments=commitments, one_off_events=one_offs, latest_actual_date=latest_actual, require_household_allocations=True)
     funds = SinkingFundProvision.query.order_by(SinkingFundProvision.due_date).all()
     fund_rows = [{"provision": fund, "recommendation": sinking_fund_recommendation(fund, incomes, start)} for fund in funds]
     return render_template("forecast.html", forecast=forecast, view=view, actual_opening=actual_opening, incomes=incomes, commitments=commitments, one_offs=one_offs, fund_rows=fund_rows, accounts=Account.query.order_by(Account.name).all(), categories=Category.query.order_by(Category.name).all(), savings_goals=SavingsGoal.query.order_by(SavingsGoal.name).all(), income_frequencies=INCOME_FREQUENCIES, commitment_frequencies=COMMITMENT_FREQUENCIES, commitment_types=COMMITMENT_TYPES, household_flags=HOUSEHOLD_FLAGS)
@@ -337,3 +342,74 @@ def review_reconciliation():
     except ValueError as exc:
         db.session.rollback(); flash(str(exc), "error")
     return redirect(url_for("forecast.daily_health", date=request.form.get("selected_date")))
+
+
+@bp.route("/income-allocations")
+def income_allocations():
+    """Display income allocations and read-only contribution match proposals."""
+    schedules = IncomeSchedule.query.order_by(IncomeSchedule.next_expected_date).all()
+    today = date.today()
+    contributions = contribution_occurrences(db.session, schedules, today - timedelta(days=45), today + timedelta(days=90), today)
+    return render_template("income_allocations.html", schedules=schedules, accounts=Account.query.order_by(Account.name).all(),
+        contributions=contributions, allocation_types=ALLOCATION_TYPES, allocation_statuses=ALLOCATION_STATUSES,
+        availability_classes=AVAILABILITY_CLASSES, source_types=SOURCE_TYPES,
+        reconciliation_statuses=CONTRIBUTION_RECONCILIATION_STATUSES, today=today)
+
+
+@bp.route("/income-allocations/<int:schedule_id>", methods=["POST"])
+@bp.route("/income-allocations/<int:schedule_id>/<int:allocation_id>", methods=["POST"])
+def save_income_allocation(schedule_id, allocation_id=None):
+    schedule = db.get_or_404(IncomeSchedule, schedule_id)
+    try:
+        allocation_type = request.form.get("allocation_type", "")
+        status = request.form.get("status", "")
+        source_type = request.form.get("source_type", "manual")
+        availability = request.form.get("availability_classification", "")
+        if allocation_type not in ALLOCATION_TYPES or status not in ALLOCATION_STATUSES or source_type not in SOURCE_TYPES or availability not in AVAILABILITY_CLASSES:
+            raise ValueError("Select supported income allocation options.")
+        amount_text = request.form.get("amount", "").strip()
+        percentage_text = request.form.get("percentage", "").strip()
+        if bool(amount_text) == bool(percentage_text): raise ValueError("Enter either a fixed amount or a percentage.")
+        allocation = db.session.get(IncomeAllocation, allocation_id) if allocation_id else IncomeAllocation(income_schedule_id=schedule.id)
+        if allocation_id and (not allocation or allocation.income_schedule_id != schedule.id): raise ValueError("Income allocation not found.")
+        allocation.allocation_type = allocation_type
+        allocation.amount = parse_money(amount_text, non_negative=True) if amount_text else None
+        allocation.percentage = parse_money(percentage_text, non_negative=True) if percentage_text else None
+        if allocation.percentage is not None and allocation.percentage > 100: raise ValueError("Percentage cannot exceed 100.")
+        allocation.destination_account_id = request.form.get("destination_account_id", type=int)
+        if allocation_type == "household_contribution" and not allocation.destination_account_id: raise ValueError("Select a destination household account.")
+        allocation.effective_from = _date_value("effective_from")
+        allocation.effective_to = _date_value("effective_to", required=False)
+        if allocation.effective_to and allocation.effective_to < allocation.effective_from: raise ValueError("Effective end cannot precede its start.")
+        allocation.frequency = request.form.get("frequency") if request.form.get("frequency") in INCOME_FREQUENCIES else schedule.frequency
+        allocation.status = status; allocation.source_type = source_type
+        schedule.availability_classification = availability
+        db.session.add(allocation); db.session.commit(); flash("Income allocation saved without changing total expected pay.", "success")
+    except ValueError as exc:
+        db.session.rollback(); flash(str(exc), "error")
+    return redirect(url_for("forecast.income_allocations"))
+
+
+@bp.route("/income-allocations/<int:allocation_id>/deactivate", methods=["POST"])
+def deactivate_income_allocation(allocation_id):
+    allocation = db.get_or_404(IncomeAllocation, allocation_id)
+    allocation.status = "inactive"; db.session.commit(); flash("Income allocation deactivated.", "success")
+    return redirect(url_for("forecast.income_allocations"))
+
+
+@bp.route("/contribution-reconciliations", methods=["POST"])
+def review_contribution_reconciliation():
+    try:
+        allocation = db.get_or_404(IncomeAllocation, request.form.get("allocation_id", type=int))
+        expected_date = date.fromisoformat(request.form.get("expected_date", ""))
+        status = request.form.get("status", "")
+        if status not in CONTRIBUTION_RECONCILIATION_STATUSES: raise ValueError("Select a valid contribution status.")
+        row = ContributionReconciliation.query.filter_by(income_allocation_id=allocation.id, expected_date=expected_date).first() or ContributionReconciliation(income_allocation_id=allocation.id, expected_date=expected_date)
+        row.expected_amount = parse_money(request.form.get("expected_amount"), non_negative=True)
+        row.status = status
+        row.matched_transaction_id = request.form.get("matched_transaction_id", type=int) if status in {"matched", "partially_matched"} else None
+        if status in {"matched", "partially_matched"} and not row.matched_transaction_id: raise ValueError("Select a proposed incoming transaction before confirming a match.")
+        row.reviewed_at = datetime.now(); db.session.add(row); db.session.commit(); flash("Household contribution status reviewed.", "success")
+    except ValueError as exc:
+        db.session.rollback(); flash(str(exc), "error")
+    return redirect(url_for("forecast.income_allocations"))

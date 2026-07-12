@@ -200,6 +200,7 @@ table tbody td {
 .health-at_risk, .health-critical { border-color: #dc2626; }
 .health-insufficient_data { border-style: dashed; }
 .guidance-card, .reconciliation-row { margin-top: 0.75rem; background: rgba(248, 250, 252, 0.8); }
+.allocation-card { margin-top: 0.75rem; border-top: 1px solid #cbd5e1; padding-top: 0.75rem; }
 .reconciliation-row { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; }
 
 .desc-cell {
