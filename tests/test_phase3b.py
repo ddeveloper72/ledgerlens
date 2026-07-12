@@ -7,6 +7,7 @@ from app.models import (
     PlannedCommitment, RecurringBill, Transaction, User, VariableBudget,
 )
 from app.services.daily_financial_health_service import build_daily_financial_health
+from app.services.account_balance_service import account_balance_at, household_balance_position
 
 
 def setup_account():
@@ -166,3 +167,36 @@ def test_stale_account_reduces_confidence(app):
         result = build_daily_financial_health(db.session, date(2026, 1, 10))
         assert result["data_confidence"]["level"] in {"low", "insufficient"}
         assert any("stale" in reason.lower() for reason in result["data_confidence"]["reasons"])
+
+
+def test_balance_snapshot_and_overdraft_are_kept_separate(app):
+    with app.app_context():
+        account = setup_account()
+        account.current_balance = Decimal("500.00")
+        account.balance_as_of = date(2026, 1, 10)
+        account.overdraft_limit = Decimal("1000.00")
+        add_transaction(account, date(2026, 1, 11), "-25.00")
+        db.session.commit()
+        assert account_balance_at(db.session, account, date(2026, 1, 10)) == Decimal("500.00")
+        position = household_balance_position(db.session, [account], date(2026, 1, 11))
+        assert position["current_balance"] == Decimal("475.00")
+        assert position["overdraft_limit"] == Decimal("1000.00")
+        assert position["available_funds"] == Decimal("1475.00")
+
+
+def test_topup_avoids_overdraft_but_payment_shortfall_uses_available_funds(app):
+    with app.app_context():
+        account = setup_account()
+        account.current_balance = Decimal("500.00")
+        account.balance_as_of = date(2026, 1, 10)
+        account.overdraft_limit = Decimal("1000.00")
+        add_transaction(account, date(2026, 1, 10), "0.00")
+        add_household_income(account, "100.00", date(2026, 1, 20))
+        db.session.add(PlannedCommitment(display_name="Example Payment", amount=Decimal("800.00"), frequency="one-off", next_expected_date=date(2026, 1, 15), active=True, commitment_type="bill"))
+        db.session.commit()
+        result = build_daily_financial_health(db.session, date(2026, 1, 10))
+        assert result["joint_account_current_balance"] == Decimal("500.00")
+        assert result["joint_account_available_funds"] == Decimal("1500.00")
+        assert result["required_contribution"] == Decimal("300.00")
+        assert result["payment_shortfall"] == Decimal("0.00")
+        assert result["state"] == "at_risk"

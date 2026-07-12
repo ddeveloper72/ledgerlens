@@ -16,6 +16,7 @@ from app.services.cashflow_forecast_service import (
 from app.services.merchant_service import ensure_category
 from app.services.money import parse_money
 from app.services.daily_financial_health_service import build_daily_financial_health
+from app.services.account_balance_service import household_balance_position
 from app.services.income_allocation_service import (
     ALLOCATION_STATUSES, ALLOCATION_TYPES, AVAILABILITY_CLASSES,
     RECONCILIATION_STATUSES as CONTRIBUTION_RECONCILIATION_STATUSES,
@@ -43,13 +44,8 @@ def _date_value(name, required=True):
 
 
 def _actual_opening_balance(today, account_ids=None):
-    query = db.session.query(db.func.coalesce(db.func.sum(Transaction.amount), Decimal("0.00"))).filter(
-        Transaction.posted_date <= today, Transaction.excluded_from_analysis.is_(False)
-    )
-    if account_ids is not None:
-        query = query.filter(Transaction.account_id.in_(account_ids)) if account_ids else query.filter(Transaction.id.is_(None))
-    value = query.scalar()
-    return Decimal(value).quantize(Decimal("0.01"))
+    accounts = Account.query.filter(Account.id.in_(account_ids)).all() if account_ids else []
+    return household_balance_position(db.session, accounts, today)["current_balance"]
 
 
 def _forecast_bounds(today, view, start_text=None, end_text=None):

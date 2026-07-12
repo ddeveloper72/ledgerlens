@@ -8,6 +8,7 @@ from app.models import (
 from app.services.cashflow_forecast_service import occurrence_dates
 from app.services.financial_guidance_service import generate_financial_guidance
 from app.services.income_allocation_service import contribution_occurrences, income_breakdown
+from app.services.account_balance_service import household_balance_position
 
 
 def _money(value):
@@ -73,10 +74,12 @@ def build_daily_financial_health(session, selected_date, horizon_days=30):
     safety_buffer = _money(setting.safety_buffer if setting else 0)
     incomes = session.query(IncomeSchedule).filter_by(active=True).all()
     destination_ids = {allocation.destination_account_id for schedule in incomes for allocation in schedule.allocations if allocation.allocation_type == "household_contribution" and allocation.status != "inactive" and allocation.destination_account_id}
+    destination_accounts = session.query(Account).filter(Account.id.in_(destination_ids)).all() if destination_ids else []
+    balance_position = household_balance_position(session, destination_accounts, selected_date)
     actual_query = session.query(Transaction).filter(Transaction.posted_date <= selected_date, Transaction.excluded_from_analysis.is_(False))
     actual_rows = actual_query.filter(Transaction.account_id.in_(destination_ids)).all() if destination_ids else []
     analysis_rows = [row for row in actual_rows if not row.internal_transfer]
-    balance = sum((_money(row.amount) for row in analysis_rows), Decimal("0.00"))
+    balance = balance_position["current_balance"]
     actual_income = sum((_money(row.amount) for row in analysis_rows if row.amount > 0), Decimal("0.00"))
     actual_spend = sum((abs(_money(row.amount)) for row in analysis_rows if row.amount < 0), Decimal("0.00"))
     end_date = selected_date + timedelta(days=horizon_days)
@@ -136,6 +139,8 @@ def build_daily_financial_health(session, selected_date, horizon_days=30):
         if running < minimum: minimum, minimum_date = running, event["date"]
         if next_income and event["date"] == next_income and event["amount"] > 0: pre_income = running - event["amount"]
     required_contribution = max(safety_buffer - minimum, Decimal("0.00"))
+    minimum_available_funds = minimum + balance_position["overdraft_limit"]
+    payment_shortfall = max(safety_buffer - minimum_available_funds, Decimal("0.00"))
     contribution_deadline = selected_date if balance < safety_buffer else next((event["date"] for event in events if event.get("running_balance") is not None and event["running_balance"] < safety_buffer), None)
     payments_before_income = [row for row in outstanding if selected_date < row["date"] <= forecast_end]
     payments_before_income_total = sum((row["amount"] for row in payments_before_income), Decimal("0.00"))
@@ -145,15 +150,17 @@ def build_daily_financial_health(session, selected_date, horizon_days=30):
     confidence = _confidence(session, selected_date, estimated_count, list(dict.fromkeys(allocation_reasons)), destination_ids)
     essential_uncovered = any(row["essential"] and row["status"] == "overdue" for row in outstanding)
     if confidence["level"] == "insufficient": state = "insufficient_data"
-    elif minimum < 0: state = "critical"
+    elif minimum_available_funds < 0: state = "critical"
+    elif minimum < 0: state = "at_risk"
     elif essential_uncovered: state = "at_risk"
     elif minimum < safety_buffer or overdue: state = "caution"
     else: state = "healthy"
     evidence = []
-    if minimum < 0: evidence.append(f"The projected balance falls below zero on {minimum_date}.")
+    if minimum_available_funds < 0: evidence.append(f"The forecast exceeds the account balance and available overdraft on {minimum_date}.")
+    elif minimum < 0: evidence.append(f"The forecast uses the overdraft from {minimum_date} unless an additional contribution is made.")
     if minimum < safety_buffer: evidence.append(f"The projected minimum {minimum:.2f} is below the configured safety buffer {safety_buffer:.2f}.")
     if overdue: evidence.append(f"{len(overdue)} expected payment(s) are overdue and unmatched.")
     if not evidence: evidence.append("Expected commitments remain covered above the configured safety buffer.")
-    result = {"selected_date": selected_date, "balance": _money(balance), "joint_account_available_balance": _money(balance), "actual_income": _money(actual_income), "actual_expenditure": _money(actual_spend), "total_household_income_expected": _money(total_income_expected), "household_contributions_expected": _money(household_contributions_expected), "household_contributions_received": sum((row["amount"] for row in received_contributions), Decimal("0.00")), "household_contributions_due": sum((row["amount"] for row in due_contributions), Decimal("0.00")), "income_excluded_from_forecast": _money(income_excluded), "estimated_household_spending": sum((row["amount"] for row in occurrences if row["label"] == "Estimated" and row["date"] > selected_date), Decimal("0.00")), "income_calculation": income_calculation, "contribution_occurrences": all_contributions, "bills_paid": paid, "essential_bills_paid": [row for row in paid if row["essential"]], "outstanding_bills": outstanding, "upcoming_five_days": upcoming, "overdue_commitments": overdue, "next_income_date": next_income, "days_until_income": (next_income - selected_date).days if next_income else None, "projected_pre_income_balance": _money(pre_income) if next_income else None, "minimum_projected_balance": _money(minimum), "minimum_balance_date": minimum_date, "conservative_projected_balance": _money(running), "required_contribution": _money(required_contribution), "contribution_deadline": contribution_deadline, "projected_position_after_contribution": projected_after_contribution, "payments_before_next_income": payments_before_income, "payments_before_next_income_total": _money(payments_before_income_total), "state": state, "evidence": evidence, "data_confidence": confidence, "safety_buffer": safety_buffer, "events": events}
+    result = {"selected_date": selected_date, "balance": _money(balance), "joint_account_current_balance": _money(balance), "joint_account_overdraft": balance_position["overdraft_limit"], "joint_account_available_funds": balance_position["available_funds"], "joint_account_available_balance": _money(balance), "actual_income": _money(actual_income), "actual_expenditure": _money(actual_spend), "total_household_income_expected": _money(total_income_expected), "household_contributions_expected": _money(household_contributions_expected), "household_contributions_received": sum((row["amount"] for row in received_contributions), Decimal("0.00")), "household_contributions_due": sum((row["amount"] for row in due_contributions), Decimal("0.00")), "income_excluded_from_forecast": _money(income_excluded), "estimated_household_spending": sum((row["amount"] for row in occurrences if row["label"] == "Estimated" and row["date"] > selected_date), Decimal("0.00")), "income_calculation": income_calculation, "contribution_occurrences": all_contributions, "bills_paid": paid, "essential_bills_paid": [row for row in paid if row["essential"]], "outstanding_bills": outstanding, "upcoming_five_days": upcoming, "overdue_commitments": overdue, "next_income_date": next_income, "days_until_income": (next_income - selected_date).days if next_income else None, "projected_pre_income_balance": _money(pre_income) if next_income else None, "minimum_projected_balance": _money(minimum), "minimum_available_funds": _money(minimum_available_funds), "minimum_balance_date": minimum_date, "conservative_projected_balance": _money(running), "required_contribution": _money(required_contribution), "payment_shortfall": _money(payment_shortfall), "contribution_deadline": contribution_deadline, "projected_position_after_contribution": projected_after_contribution, "payments_before_next_income": payments_before_income, "payments_before_next_income_total": _money(payments_before_income_total), "state": state, "evidence": evidence, "data_confidence": confidence, "safety_buffer": safety_buffer, "events": events}
     result["recommendations"] = generate_financial_guidance(result)
     return result

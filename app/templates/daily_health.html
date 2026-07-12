@@ -19,10 +19,11 @@
 <section class="household-plan {{ 'household-plan--action' if snapshot.required_contribution > 0 else 'household-plan--clear' }} mb-6" data-fade-in>
   <span class="smart-key">Household plan</span>
   {% if snapshot.required_contribution > 0 %}
-  <p class="plan-kicker">To keep upcoming payments covered</p>
+  <p class="plan-kicker">To cover upcoming payments without relying on the overdraft</p>
   <h2 class="plan-answer">Add €{{ '%.2f'|format(snapshot.required_contribution) }} to the joint account</h2>
   <p class="plan-deadline">By {{ snapshot.contribution_deadline or 'the next payment due date' }}</p>
-  <p class="plan-explanation">This is the estimated top-up needed to pay {{ snapshot.payments_before_next_income|length }} upcoming item(s) totalling €{{ '%.2f'|format(snapshot.payments_before_next_income_total) }} and keep the balance at or above your €{{ '%.2f'|format(snapshot.safety_buffer) }} safety buffer.</p>
+  <p class="plan-explanation">This is the estimated top-up needed to pay {{ snapshot.payments_before_next_income|length }} upcoming item(s) totalling €{{ '%.2f'|format(snapshot.payments_before_next_income_total) }} without using the €{{ '%.2f'|format(snapshot.joint_account_overdraft) }} overdraft, while keeping your €{{ '%.2f'|format(snapshot.safety_buffer) }} safety buffer.</p>
+  {% if snapshot.payment_shortfall > 0 %}<p class="plan-warning">At least €{{ '%.2f'|format(snapshot.payment_shortfall) }} is required to prevent payments exceeding all currently available funds.</p>{% else %}<p class="text-sm mt-3">The payments fit within available funds, but the account would use its overdraft without this top-up.</p>{% endif %}
   {% else %}
   <p class="plan-kicker">Upcoming payments are currently covered</p>
   <h2 class="plan-answer">No additional joint-account top-up is forecast right now</h2>
@@ -31,8 +32,9 @@
   {% if snapshot.overdue_commitments %}<p class="plan-warning">Review {{ snapshot.overdue_commitments|length }} overdue unmatched payment(s); they may change the amount required.</p>{% endif %}
 </section>
 
-<section class="grid gap-4 md:grid-cols-4 mb-6" data-stagger>
-  <article class="metric-card"><span class="smart-key">Actual</span><p class="metric-label">In the joint account now</p><p class="metric-value">€{{ '%.2f'|format(snapshot.joint_account_available_balance) }}</p></article>
+<section class="grid gap-4 md:grid-cols-5 mb-6" data-stagger>
+  <article class="metric-card"><span class="smart-key">Actual</span><p class="metric-label">Current joint-account balance</p><p class="metric-value">€{{ '%.2f'|format(snapshot.joint_account_current_balance) }}</p></article>
+  <article class="metric-card"><span class="smart-key">Balance + overdraft</span><p class="metric-label">Available funds</p><p class="metric-value">€{{ '%.2f'|format(snapshot.joint_account_available_funds) }}</p></article>
   <article class="metric-card"><span class="smart-key">Forecast</span><p class="metric-label">Payments before next income</p><p class="metric-value">€{{ '%.2f'|format(snapshot.payments_before_next_income_total) }}</p><p class="text-sm">{{ snapshot.payments_before_next_income|length }} item(s)</p></article>
   <article class="metric-card"><span class="smart-key">Suggested</span><p class="metric-label">Top-up needed</p><p class="metric-value">€{{ '%.2f'|format(snapshot.required_contribution) }}</p><p class="text-sm">By {{ snapshot.contribution_deadline or 'not currently required' }}</p></article>
   <article class="metric-card"><span class="smart-key">Estimated</span><p class="metric-label">Lowest balance after suggested top-up</p><p class="metric-value">€{{ '%.2f'|format(snapshot.projected_position_after_contribution) }}</p></article>

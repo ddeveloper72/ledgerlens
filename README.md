@@ -221,6 +221,12 @@ An income schedule and its contribution may have different timing. Choose **Ad h
 
 Estimated variable budgets continue to represent shared costs paid through accounts that are not imported. Private spending is not subtracted merely because personal income remains outside the household allocation.
 
+## Balance Snapshots and Overdrafts
+
+Account settings can record a bank-provided current balance, its as-of date, and an overdraft limit. Forecasts use the snapshot plus later imported transactions instead of reconstructing the current position from incomplete history.
+
+Current balance and available funds are deliberately separate: overdraft capacity can prevent a payment from failing, but it is credit rather than household income. Daily Health therefore shows both the suggested contribution needed to avoid using the overdraft and any minimum shortfall that would exceed all available funds.
+
 ## Request Security
 
 CSRF protection is enabled by default for every state-changing form. Tests disable CSRF only through `TestConfig`; production and local development retain protection.

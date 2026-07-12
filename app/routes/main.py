@@ -18,6 +18,7 @@ from app.services.csv_import import (
     import_transactions,
 )
 from app.services.cashflow_service import cash_flow_calendar
+from app.services.account_balance_service import account_balance_at
 from app.services.completeness_service import data_completeness_report
 from app.services.household_analytics import household_analytics_snapshot
 from app.services.merchant_service import (
@@ -456,12 +457,7 @@ def accounts():
 
     account_rows = []
     for account in Account.query.order_by(Account.name.asc()).all():
-        balance = (
-            db.session.query(db.func.coalesce(db.func.sum(Transaction.amount), Decimal("0.00")))
-            .filter(Transaction.account_id == account.id)
-            .filter(Transaction.excluded_from_analysis.is_(False))
-            .scalar()
-        )
+        balance = account_balance_at(db.session, account, date.today())
         transaction_count = Transaction.query.filter_by(account_id=account.id, excluded_from_analysis=False).count()
         excluded_count = Transaction.query.filter_by(account_id=account.id, excluded_from_analysis=True).count()
         internal_transfer_count = Transaction.query.filter_by(account_id=account.id, internal_transfer=True).count()
@@ -469,6 +465,7 @@ def accounts():
             {
                 "account": account,
                 "balance": balance,
+                "available_funds": Decimal(balance) + Decimal(account.overdraft_limit or 0),
                 "transaction_count": transaction_count,
                 "excluded_count": excluded_count,
                 "internal_transfer_count": internal_transfer_count,
@@ -476,6 +473,22 @@ def accounts():
         )
 
     return render_template("accounts.html", account_rows=account_rows)
+
+
+@bp.route("/accounts/<int:account_id>/balance", methods=["POST"])
+def update_account_balance(account_id):
+    """Save a bank-provided balance snapshot and optional overdraft limit."""
+    account = db.get_or_404(Account, account_id)
+    try:
+        account.current_balance = parse_money(request.form.get("current_balance"), allow_negative=True)
+        account.overdraft_limit = parse_money(request.form.get("overdraft_limit", "0"), non_negative=True)
+        account.balance_as_of = date.fromisoformat(request.form.get("balance_as_of", ""))
+        db.session.commit()
+        flash("Account balance snapshot saved.", "success")
+    except ValueError as exc:
+        db.session.rollback()
+        flash(str(exc), "error")
+    return redirect(url_for("main.accounts"))
 
 
 @bp.route("/accounts/paypal-internal/exclude", methods=["POST"])

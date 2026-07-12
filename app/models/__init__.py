@@ -16,6 +16,9 @@ class Account(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     name = db.Column(db.String(120), nullable=False)
     account_type = db.Column(db.String(50), nullable=False, default="checking")
+    current_balance = db.Column(db.Numeric(12, 2), nullable=True)
+    balance_as_of = db.Column(db.Date, nullable=True)
+    overdraft_limit = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
 
     transactions = db.relationship("Transaction", backref="account", lazy=True)

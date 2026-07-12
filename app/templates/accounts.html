@@ -43,6 +43,8 @@
                         <th>Excluded</th>
                         <th>Internal transfers</th>
                         <th class="text-right">Balance</th>
+                        <th class="text-right">Available funds</th>
+                        <th>Update snapshot</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -54,10 +56,12 @@
                         <td>{{ row.excluded_count }}</td>
                         <td>{{ row.internal_transfer_count }}</td>
                         <td class="text-right">{{ '%.2f'|format(row.balance) }}</td>
+                        <td class="text-right">{{ '%.2f'|format(row.available_funds) }}</td>
+                        <td><form action="{{ url_for('main.update_account_balance', account_id=row.account.id) }}" method="post" class="space-y-2"><input name="current_balance" inputmode="decimal" class="file-input" value="{{ row.account.current_balance if row.account.current_balance is not none else '' }}" placeholder="Current balance" required><input name="overdraft_limit" inputmode="decimal" class="file-input" value="{{ row.account.overdraft_limit or '0.00' }}" placeholder="Overdraft limit" required><input type="date" name="balance_as_of" class="file-input" value="{{ row.account.balance_as_of or '' }}" required><button class="pill-link" type="submit">Save balance</button></form></td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="6" class="text-center py-10 text-slate-500">No accounts created yet.</td>
+                        <td colspan="8" class="text-center py-10 text-slate-500">No accounts created yet.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
