@@ -45,8 +45,10 @@ def create_app(config_class=Config):
         User,
     )
     from app.routes.main import bp as main_bp
+    from app.routes.forecast import bp as forecast_bp
 
     app.register_blueprint(main_bp)
+    app.register_blueprint(forecast_bp)
 
     @app.cli.command("backfill-categories")
     def backfill_categories_command():
