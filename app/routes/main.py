@@ -23,13 +23,15 @@ from app.services.savings_account_health_service import savings_account_health
 from app.services.completeness_service import data_completeness_report
 from app.services.household_analytics import household_analytics_snapshot
 from app.services.merchant_service import (
-    apply_mapping, ensure_category, infer_financial_labels, preview_mapping_count, save_mapping,
+    apply_mapping, canonical_merchant_hint, ensure_category, infer_financial_labels,
+    preview_mapping_count, save_mapping,
 )
 from app.services.imports.paypal_import import (
     exclude_legacy_paypal_internal_rows,
     restore_excluded_paypal_internal_rows,
 )
 from app.services.credit_union_internal import mark_credit_union_internal_movements
+from app.services.description_patterns import is_counterparty_candidate, transaction_description_context
 from app.services.description_patterns import (
     PAYMENT_METHODS, description_pattern_key, payment_method_for, transaction_direction,
 )
@@ -286,16 +288,47 @@ def _intelligence_context(preview=None):
     recent_transactions = Transaction.query.filter_by(excluded_from_analysis=False).order_by(Transaction.posted_date.desc(), Transaction.id.desc()).limit(20).all()
     journey = []
     for txn in recent_transactions:
-        merchant_name = txn.merchant.name if txn.merchant else "Unknown"
+        description_context = transaction_description_context(txn.cleaned_description, txn.amount)
+        assigned_name = txn.merchant.name if txn.merchant and is_counterparty_candidate(txn.merchant.name) else None
+        merchant_name = assigned_name or description_context["counterparty_hint"] or "Unconfirmed"
         category_name = txn.category.name if txn.category else "Uncategorized"
-        journey.append({"transaction": txn, "merchant_name": merchant_name, "category_name": category_name, "labels": infer_financial_labels(merchant_name, category_name, txn.cleaned_description)})
+        journey.append({"transaction": txn, "merchant_name": merchant_name, "category_name": category_name,
+            "description_context": description_context,
+            "labels": infer_financial_labels(merchant_name, category_name, txn.cleaned_description)})
     recurring = recurring_expected_vs_missing(db.session)
+    alias_candidates = []
+    seen_aliases = set()
+    for transaction in recent_transactions:
+        description_context = transaction_description_context(transaction.cleaned_description, transaction.amount)
+        if (description_context["user_note"] or description_context["contains_sensitive_reference"]
+                or description_context["reference_kind"] == "account_alias"):
+            continue
+        hint = canonical_merchant_hint(transaction.cleaned_description)
+        if hint and hint not in seen_aliases:
+            label_detail = description_context["payment_method_label"]
+            alias_candidates.append({"value": transaction.cleaned_description,
+                "label": f"{label_detail}: {transaction.cleaned_description}",
+                "context": description_context})
+            seen_aliases.add(hint)
+    merchant_options = [row for row in Merchant.query.order_by(Merchant.name).all()
+                        if is_counterparty_candidate(row.name)]
     return {
         "merchant_journey": journey,
         "merchant_aliases": MerchantAlias.query.order_by(MerchantAlias.alias).all(),
         "recurring_expected": recurring["expected"], "recurring_missing": recurring["missing"],
         "cash_calendar": cash_flow_calendar(db.session, period), "preview": preview,
+        "alias_candidates": alias_candidates,
+        "merchant_options": merchant_options,
+        "category_options": Category.query.order_by(Category.name).all(),
     }
+
+
+def _mapping_form_value(name, default=""):
+    """Resolve a structured selection or its explicit custom-value field."""
+    selected = request.form.get(name, "").strip()
+    if selected == "__new__":
+        return request.form.get(f"{name}_custom", "").strip()
+    return selected or default
 
 
 @bp.route("/intelligence", methods=["GET", "POST"])
@@ -308,9 +341,9 @@ def intelligence():
 
 @bp.route("/merchant-mappings/preview", methods=["POST"])
 def preview_merchant_mapping():
-    alias_text = request.form.get("alias_text", "").strip()
-    merchant_name = request.form.get("merchant_name", "").strip()
-    category_name = request.form.get("category_name", "").strip() or "Uncategorized"
+    alias_text = _mapping_form_value("alias_text")
+    merchant_name = _mapping_form_value("merchant_name")
+    category_name = _mapping_form_value("category_name", "Uncategorized")
     household_flag = request.form.get("household_flag") if request.form.get("household_flag") in HOUSEHOLD_FLAGS else "unknown"
     if not alias_text or not merchant_name:
         flash("Alias and merchant are required.", "error")
@@ -321,9 +354,9 @@ def preview_merchant_mapping():
 
 @bp.route("/merchant-mappings", methods=["POST"])
 def save_merchant_mapping():
-    alias_text = request.form.get("alias_text", "").strip()
-    merchant_name = request.form.get("merchant_name", "").strip()
-    category_name = request.form.get("category_name", "").strip() or "Uncategorized"
+    alias_text = _mapping_form_value("alias_text")
+    merchant_name = _mapping_form_value("merchant_name")
+    category_name = _mapping_form_value("category_name", "Uncategorized")
     household_flag = request.form.get("household_flag") if request.form.get("household_flag") in HOUSEHOLD_FLAGS else "unknown"
     if not alias_text or not merchant_name:
         flash("Alias and merchant are required.", "error")

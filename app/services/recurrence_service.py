@@ -5,6 +5,9 @@ import json
 from statistics import median
 
 from app.models import Account, Category, RecurringBill, RecurringCandidate, Transaction
+from app.services.description_patterns import (
+    description_pattern_key, is_counterparty_candidate, transaction_description_context,
+)
 
 FREQUENCIES = ("weekly", "fortnightly", "monthly", "quarterly", "annual", "irregular")
 FREQUENCY_DAYS = {"weekly": 7, "fortnightly": 14, "monthly": 30, "quarterly": 91, "annual": 365}
@@ -43,7 +46,8 @@ def detect_recurring_candidates(session, min_occurrences=3):
     )
     grouped = defaultdict(list)
     for txn in rows:
-        key = ("merchant", txn.merchant_id) if txn.merchant_id else ("description", txn.cleaned_description.lower())
+        valid_merchant = txn.merchant if txn.merchant and is_counterparty_candidate(txn.merchant.name) else None
+        key = ("merchant", valid_merchant.id) if valid_merchant else ("pattern", description_pattern_key(txn.cleaned_description, txn.amount))
         grouped[key].append(txn)
     suggestions = []
     for _key, txns in grouped.items():
@@ -65,11 +69,13 @@ def detect_recurring_candidates(session, min_occurrences=3):
         )
         confidence = ((timing_score * Decimal("0.75") + amount_score * Decimal("0.25")) * 100).quantize(Decimal("0.01"))
         sample = txns[-1]
-        merchant_name = sample.merchant.name if sample.merchant else sample.cleaned_description
+        valid_merchant = sample.merchant if sample.merchant and is_counterparty_candidate(sample.merchant.name) else None
+        description_context = transaction_description_context(sample.cleaned_description, sample.amount)
+        merchant_name = valid_merchant.name if valid_merchant else description_context["counterparty_hint"] or "Unconfirmed counterparty"
         suggestions.append(
             {
-                "merchant_id": sample.merchant_id,
-                "normalized_description": sample.cleaned_description.lower()[:120],
+                "merchant_id": valid_merchant.id if valid_merchant else None,
+                "normalized_description": description_pattern_key(sample.cleaned_description, sample.amount)[:120],
                 "display_name": merchant_name,
                 "category_id": sample.category_id,
                 "observed_count": len(txns),

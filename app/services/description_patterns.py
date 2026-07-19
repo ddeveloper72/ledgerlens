@@ -15,6 +15,55 @@ PAYMENT_METHODS = {
 }
 
 
+def transaction_description_context(description, amount=None):
+    """Separate a bank narrative into channel, note/reference, and counterparty hint.
+
+    This is deliberately conservative: ambiguous mobile notes, account aliases,
+    payroll identifiers, and changing bank references never become counterparties.
+    """
+    raw = " ".join((description or "").strip().split())
+    upper = raw.upper()
+    method = payment_method_for(raw, amount)
+    counterparty = None
+    user_note = None
+    reference_kind = None
+    if method == "mobile_transfer":
+        user_note = re.sub(r"^\*MOBI\s+", "", raw, flags=re.IGNORECASE).strip() or None
+        reference_kind = "user_note"
+    elif re.fullmatch(r"(?:\d{2}-)?\d{10,}", raw) or re.fullmatch(r"IE\d{8,}", upper):
+        reference_kind = "sensitive_reference"
+    elif re.fullmatch(r"CURRENT-\d{3,4}", upper):
+        reference_kind = "account_alias"
+    elif method == "direct_debit":
+        candidate = re.sub(r"^(D/D|DD)\s+", "", raw, flags=re.IGNORECASE)
+        candidate = re.sub(r"\s+IE\d{8,}.*$", "", candidate, flags=re.IGNORECASE)
+        candidate = re.sub(r"\s+-?\s*(?:UNP\s*-\s*)?\d{5,}.*$", "", candidate, flags=re.IGNORECASE)
+        counterparty = candidate.strip(" -") or None
+        reference_kind = "bank_reference" if counterparty != re.sub(r"^(D/D|DD)\s+", "", raw, flags=re.IGNORECASE) else None
+    elif method in {"card", "unknown"} and not re.search(r"\b(?:IE\d{8,}|\d{10,}|CURRENT-\d{3,4})\b", upper):
+        candidate = re.sub(r"^(VDP|VDC|CARD|POS)[- ]+", "", raw, flags=re.IGNORECASE).strip()
+        counterparty = candidate or None
+    if amount is not None and amount > 0 and (reference_kind == "sensitive_reference" or "PAYROLL" in upper):
+        reference_kind = "payroll_reference"
+        counterparty = None
+    return {"raw_description": raw, "payment_method": method,
+            "payment_method_label": PAYMENT_METHODS.get(method, "Unknown"),
+            "counterparty_hint": counterparty, "user_note": user_note,
+            "reference_kind": reference_kind,
+            "contains_sensitive_reference": reference_kind in {"sensitive_reference", "payroll_reference"}}
+
+
+def is_counterparty_candidate(value):
+    """Reject raw narratives and identifiers from canonical counterparty choices."""
+    context = transaction_description_context(value)
+    text = (value or "").strip()
+    if not text or context["user_note"] or context["contains_sensitive_reference"]:
+        return False
+    if context["reference_kind"] == "account_alias" or text.upper().startswith(("D/D ", "DD ", "SEPA ")):
+        return False
+    return not bool(re.search(r"\b(?:IE\d{8,}|\d{10,}|CURRENT-\d{3,4})\b", text.upper()))
+
+
 def payment_method_for(description, amount=None):
     """Classify the payment rail without treating it as a spending category."""
     text = " ".join((description or "").upper().split())

@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from app.extensions import db
-from app.models import Account, Category, CategoryFlagRule, ForecastComparison, HouseholdSpendingSummary, ImportBatch, MerchantAlias, SavingsGoal, StatementImport, Transaction, User
+from app.models import Account, Category, CategoryFlagRule, ForecastComparison, HouseholdSpendingSummary, ImportBatch, Merchant, MerchantAlias, SavingsGoal, StatementImport, Transaction, User
 from app.routes.main import _description_pattern_key
 
 
@@ -466,6 +466,38 @@ def test_intelligence_route_saves_alias_mapping(client, app):
     with app.app_context():
         alias = MerchantAlias.query.filter_by(alias="microsoft").first()
         assert alias is not None
+
+
+def test_intelligence_mapping_form_offers_guided_existing_choices(client, app):
+    with app.app_context():
+        user = User(name="Example User"); db.session.add(user); db.session.flush()
+        account = Account(user_id=user.id, name="Example Account"); db.session.add(account)
+        db.session.add_all([Merchant(name="Example Merchant"), Category(name="Example Category")])
+        db.session.flush()
+        db.session.add(Transaction(account_id=account.id, posted_date=date.today(),
+            original_description="EXAMPLE STATEMENT TEXT", cleaned_description="EXAMPLE STATEMENT TEXT",
+            amount=Decimal("-10.00"), review_state="pending"))
+        db.session.commit()
+    body = client.get("/intelligence").get_data(as_text=True)
+    assert "Create a Merchant Rule" in body
+    assert "Select an imported description" in body
+    assert "EXAMPLE STATEMENT TEXT" in body
+    assert "Example Merchant" in body
+    assert "Example Category" in body
+
+
+def test_mapping_preview_accepts_explicit_custom_choices(client):
+    response = client.post("/merchant-mappings/preview", data={
+        "alias_text": "__new__", "alias_text_custom": "EXAMPLE NEW ALIAS",
+        "merchant_name": "__new__", "merchant_name_custom": "Example New Merchant",
+        "category_name": "__new__", "category_name_custom": "Example New Category",
+        "household_flag": "household",
+    })
+    body = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "Review this rule" in body
+    assert "EXAMPLE NEW ALIAS" in body
+    assert "Example New Merchant" in body
 
 
 def test_savings_recovery_route_saves_goal(client, app):

@@ -8,7 +8,7 @@ from app.services.categorization import assign_category, get_or_create_category
 from app.services.credit_union_internal import credit_union_internal_rule
 from app.services.description_patterns import (
     description_pattern_key, learned_pattern_classification, matching_pattern_rule,
-    payment_method_for,
+    payment_method_for, transaction_description_context,
 )
 from app.services.imports.credit_union_import import (
     infer_credit_union_context,
@@ -326,12 +326,13 @@ def import_transactions(
             db.session, account_id, row["cleaned_description"], row["amount"]
         )
         merchant = durable_rule.merchant if durable_rule and durable_rule.merchant else resolve_merchant(db.session, row["cleaned_description"])
-        if merchant is None:
-            merchant = create_or_get_merchant(db.session, row["cleaned_description"])
+        description_context = transaction_description_context(row["cleaned_description"], row["amount"])
+        if merchant is None and description_context["payment_method"] == "direct_debit" and description_context["counterparty_hint"]:
+            merchant = create_or_get_merchant(db.session, description_context["counterparty_hint"])
 
         category = assign_category(
             db.session,
-            merchant.name,
+            merchant.name if merchant else row["cleaned_description"],
             row["cleaned_description"],
             row["amount"],
         )
@@ -362,7 +363,7 @@ def import_transactions(
             account_id,
             row["cleaned_description"],
         )
-        merchant_id = merchant.id
+        merchant_id = merchant.id if merchant else None
         if learned and not internal_transfer and not durable_rule:
             category_id = learned["category_id"]
             household_flag = learned["household_flag"]

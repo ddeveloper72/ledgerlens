@@ -56,6 +56,14 @@ def create_app(config_class=Config):
     app.register_blueprint(main_bp)
     app.register_blueprint(forecast_bp)
 
+    @app.context_processor
+    def transaction_description_helpers():
+        """Expose the read-only bank-narrative classifier to transaction templates."""
+        from app.services.description_patterns import is_counterparty_candidate, transaction_description_context
+
+        return {"transaction_description_context": transaction_description_context,
+                "is_counterparty_candidate": is_counterparty_candidate}
+
     @app.cli.command("backfill-categories")
     def backfill_categories_command():
         """Apply current category rules to pending uncategorized transactions."""

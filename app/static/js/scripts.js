@@ -169,6 +169,24 @@ function wireDailyTimeline() {
     syncSlider();
 }
 
+function wireCustomChoiceFields() {
+    document.querySelectorAll("select").forEach((select) => {
+        if (!Array.from(select.options).some((option) => option.value === "__new__")) return;
+        const custom = select.form?.querySelector(`[name='${select.name}_custom']`);
+        const customLabel = custom ? select.form.querySelector(`label[for='${custom.id}']`) : null;
+        if (!custom) return;
+        const sync = () => {
+            const visible = select.value === "__new__";
+            custom.hidden = !visible;
+            custom.disabled = !visible;
+            if (customLabel) customLabel.hidden = !visible;
+            if (visible) custom.focus();
+        };
+        select.addEventListener("change", sync);
+        sync();
+    });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     wireCsrfProtection();
     animateEntrance();
@@ -177,4 +195,5 @@ document.addEventListener("DOMContentLoaded", () => {
     wireReviewCategoryInterlock();
     autoDismissFlash();
     wireDailyTimeline();
+    wireCustomChoiceFields();
 });

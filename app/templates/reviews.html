@@ -104,9 +104,10 @@
             </thead>
             <tbody>
                 {% for txn in pending_transactions %}
+                {% set description_context = transaction_description_context(txn.cleaned_description, txn.amount) %}
                 <tr>
                     <td>{{ txn.posted_date }}</td>
-                    <td>{{ txn.cleaned_description }}</td>
+                    <td>{{ txn.cleaned_description }}<div class="mt-1"><span class="desc-badge">{{ description_context.payment_method_label }}</span>{% if description_context.user_note %}<span class="desc-badge">User note</span>{% elif description_context.contains_sensitive_reference %}<span class="desc-badge">Sensitive reference</span>{% endif %}</div></td>
                     <td class="text-right">{{ '%.2f'|format(txn.amount) }}</td>
                     <td colspan="3">
                         <form action="{{ url_for('main.update_review', transaction_id=txn.id) }}" method="post" class="review-form-grid">
@@ -171,9 +172,10 @@
             </thead>
             <tbody>
                 {% for txn in reviewed_transactions %}
+                {% set description_context = transaction_description_context(txn.cleaned_description, txn.amount) %}
                 <tr>
                     <td>{{ txn.posted_date }}</td>
-                    <td>{{ txn.cleaned_description }}</td>
+                    <td>{{ txn.cleaned_description }}<div class="mt-1"><span class="desc-badge">{{ description_context.payment_method_label }}</span>{% if description_context.user_note %}<span class="desc-badge">User note</span>{% elif description_context.contains_sensitive_reference %}<span class="desc-badge">Sensitive reference</span>{% endif %}</div></td>
                     <td class="text-right">{{ '%.2f'|format(txn.amount) }}</td>
                     <td colspan="3">
                         <form action="{{ url_for('main.update_review', transaction_id=txn.id) }}" method="post" class="review-form-grid">

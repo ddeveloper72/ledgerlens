@@ -33,6 +33,7 @@
             </thead>
             <tbody>
                 {% for txn in transactions %}
+                {% set description_context = transaction_description_context(txn.cleaned_description, txn.amount) %}
                 {% set alt_desc = None %}
                 {% if txn.notes and 'Alt Description:' in txn.notes %}
                 {% set alt_desc = txn.notes.split('Alt Description:')[1].split('|')[0].strip() %}
@@ -43,6 +44,8 @@
                         <div class="desc-cell" data-description-wrapper
                             data-has-alt="{{ 'true' if alt_desc else 'false' }}" data-show-paypal="false">
                             <span class="desc-main" data-bank-description>{{ txn.cleaned_description }}</span>
+                            <span class="desc-badge">{{ description_context.payment_method_label }}</span>
+                            {% if description_context.user_note %}<span class="desc-badge">User note — counterparty unconfirmed</span>{% elif description_context.contains_sensitive_reference %}<span class="desc-badge">Sensitive reference — not an identity</span>{% endif %}
                             {% if alt_desc %}
                             <span class="desc-main hidden" data-paypal-description>{{ alt_desc }}</span>
                             <span class="desc-badge" data-desc-badge>Alt available</span>
@@ -51,7 +54,7 @@
                         </div>
                     </td>
                     <td>{{ txn.notes if txn.notes else '-' }}</td>
-                    <td>{{ txn.merchant.name if txn.merchant else 'N/A' }}</td>
+                    <td>{{ txn.merchant.name if txn.merchant and is_counterparty_candidate(txn.merchant.name) else (description_context.counterparty_hint or 'Unconfirmed') }}</td>
                     <td>{{ txn.category.name if txn.category else 'Uncategorized' }}</td>
                     <td>{{ txn.household_flag }}</td>
                     <td class="text-right">{{ '%.2f'|format(txn.amount) }}</td>

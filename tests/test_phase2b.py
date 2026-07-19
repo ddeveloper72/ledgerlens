@@ -180,7 +180,9 @@ def test_mapping_preview_is_read_only_and_application_is_explicit(client, app):
         db.session.commit()
     preview = client.post("/merchant-mappings/preview", data={"alias_text": "Example Alias", "merchant_name": "Example Merchant", "category_name": "General"})
     assert preview.status_code == 200
-    assert "would affect 1 pending" in preview.get_data(as_text=True)
+    preview_body = preview.get_data(as_text=True)
+    assert "Pending matches" in preview_body
+    assert "Apply this rule to the 1 previewed pending transaction" in preview_body
     with app.app_context():
         assert MerchantAlias.query.count() == 0
         assert Transaction.query.one().merchant_id is None
