@@ -6,7 +6,10 @@ from app.extensions import db
 from app.models import Account, ImportBatch, StatementImport, Transaction
 from app.services.categorization import assign_category, get_or_create_category
 from app.services.credit_union_internal import credit_union_internal_rule
-from app.services.description_patterns import learned_pattern_classification
+from app.services.description_patterns import (
+    description_pattern_key, learned_pattern_classification, matching_pattern_rule,
+    payment_method_for,
+)
 from app.services.imports.credit_union_import import (
     infer_credit_union_context,
     parse_hsecu_pdf_text,
@@ -219,6 +222,24 @@ def import_transactions(
             "Account key was not detected for this statement source. Please provide an account key in the import form."
         )
 
+    detected_key = metadata.get("account_key")
+    if detected_key and target_account.statement_account_key and detected_key != target_account.statement_account_key:
+        raise CSVImportError(
+            f"This statement belongs to account key '{detected_key}', but "
+            f"'{target_account.name}' is bound to '{target_account.statement_account_key}'. "
+            "Select the matching account; the import was not changed."
+        )
+    if detected_key:
+        bound_elsewhere = Account.query.filter(
+            Account.statement_account_key == detected_key,
+            Account.id != target_account.id,
+        ).first()
+        if bound_elsewhere:
+            raise CSVImportError(
+                f"This statement account key is already bound to '{bound_elsewhere.name}'. "
+                "Select that account; the import was not changed."
+            )
+
     # Guard against silently importing an overlapping statement into the wrong account.
     dates = [row["posted_date"] for row in rows]
     existing_rows = (
@@ -299,7 +320,12 @@ def import_transactions(
             skipped_duplicates += 1
             continue
 
-        merchant = resolve_merchant(db.session, row["cleaned_description"])
+        pattern_key = description_pattern_key(row["cleaned_description"], row["amount"])
+        payment_method = payment_method_for(row["cleaned_description"], row["amount"])
+        durable_rule = matching_pattern_rule(
+            db.session, account_id, row["cleaned_description"], row["amount"]
+        )
+        merchant = durable_rule.merchant if durable_rule and durable_rule.merchant else resolve_merchant(db.session, row["cleaned_description"])
         if merchant is None:
             merchant = create_or_get_merchant(db.session, row["cleaned_description"])
 
@@ -325,13 +351,19 @@ def import_transactions(
         if category.name == "Insurance Claims" and household_flag == "unknown":
             household_flag = "household"
 
+        if durable_rule and not internal_transfer:
+            category_id = durable_rule.category_id
+            household_flag = durable_rule.household_flag
+            payment_method = durable_rule.payment_method or payment_method
+            review_state = "reviewed"
+
         learned = learned_pattern_classification(
             db.session,
             account_id,
             row["cleaned_description"],
         )
         merchant_id = merchant.id
-        if learned and not internal_transfer:
+        if learned and not internal_transfer and not durable_rule:
             category_id = learned["category_id"]
             household_flag = learned["household_flag"]
             merchant_id = learned["merchant_id"] or merchant_id
@@ -343,6 +375,8 @@ def import_transactions(
             posted_date=row["posted_date"],
             original_description=row["original_description"],
             cleaned_description=row["cleaned_description"],
+            canonical_pattern=pattern_key,
+            payment_method=payment_method,
             merchant_id=merchant_id,
             category_id=category_id,
             amount=row["amount"],

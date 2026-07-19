@@ -8,6 +8,7 @@ from app.models import Account, Category, RecurringBill, RecurringCandidate, Tra
 
 FREQUENCIES = ("weekly", "fortnightly", "monthly", "quarterly", "annual", "irregular")
 FREQUENCY_DAYS = {"weekly": 7, "fortnightly": 14, "monthly": 30, "quarterly": 91, "annual": 365}
+NON_BILL_PAYMENT_METHODS = ("mobile_transfer", "bank_transfer", "sepa_transfer")
 
 
 def classify_frequency(intervals):
@@ -30,7 +31,13 @@ def detect_recurring_candidates(session, min_occurrences=3):
     rows = (
         session.query(Transaction)
         .join(Account)
-        .filter(Account.reporting_scope != "savings_tracking", Transaction.amount < 0, Transaction.excluded_from_analysis.is_(False), Transaction.internal_transfer.is_(False))
+        .filter(
+            Account.reporting_scope != "savings_tracking",
+            Transaction.amount < 0,
+            Transaction.excluded_from_analysis.is_(False),
+            Transaction.internal_transfer.is_(False),
+            Transaction.payment_method.notin_(NON_BILL_PAYMENT_METHODS),
+        )
         .order_by(Transaction.posted_date.asc(), Transaction.id.asc())
         .all()
     )
@@ -184,6 +191,7 @@ def deactivate_ineligible_recurring_records(session):
                 Transaction.amount < 0,
                 Transaction.excluded_from_analysis.is_(False),
                 Transaction.internal_transfer.is_(False),
+                Transaction.payment_method.notin_(NON_BILL_PAYMENT_METHODS),
             )
             .first()
         )

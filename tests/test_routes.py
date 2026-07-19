@@ -321,7 +321,7 @@ def test_review_queue_can_interlock_category_and_flag(client, app):
         assert rule.household_flag == "personal"
 
 
-def test_review_queue_smart_bulk_pattern_and_amount_update(client, app):
+def test_review_queue_smart_bulk_pattern_updates_variable_amounts_and_saves_rule(client, app):
     with app.app_context():
         user = User(name="Pattern Reviewer")
         db.session.add(user)
@@ -369,7 +369,7 @@ def test_review_queue_smart_bulk_pattern_and_amount_update(client, app):
         data={
             "account_id": account_id,
             "pattern_key": pattern_key,
-            "amount": "-102.00",
+            "direction": "out",
             "category_name": "Savings",
             "category_name_custom": "",
             "household_flag": "household",
@@ -381,20 +381,15 @@ def test_review_queue_smart_bulk_pattern_and_amount_update(client, app):
     assert response.status_code == 200
 
     with app.app_context():
-        updated = (
-            Transaction.query.filter(Transaction.amount == Decimal("-102.00"))
-            .order_by(Transaction.id.asc())
-            .all()
-        )
-        assert len(updated) == 2
+        updated = Transaction.query.order_by(Transaction.id.asc()).all()
+        assert len(updated) == 3
         assert all(txn.review_state == "reviewed" for txn in updated)
         assert all(txn.household_flag == "household" for txn in updated)
         assert all(txn.category and txn.category.name == "Savings" for txn in updated)
-
-        untouched = Transaction.query.filter(Transaction.amount == Decimal("-85.00")).first()
-        assert untouched is not None
-        assert untouched.review_state == "pending"
-        assert untouched.category_id is None
+        from app.models import TransactionPatternRule
+        rule = TransactionPatternRule.query.one()
+        assert rule.pattern_key == pattern_key
+        assert rule.direction == "out"
 
 
 def test_reviews_auto_align_unifies_high_confidence_outlier(client, app):

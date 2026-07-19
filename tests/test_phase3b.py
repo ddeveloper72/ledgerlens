@@ -3,8 +3,8 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.models import (
-    Account, HouseholdForecastSetting, IncomeAllocation, IncomeSchedule, Merchant, PaymentReconciliation,
-    PlannedCommitment, RecurringBill, Transaction, User, VariableBudget,
+    Account, Category, HouseholdForecastSetting, IncomeAllocation, IncomeSchedule, Merchant, PaymentReconciliation,
+    OneOffForecastEvent, PlannedCommitment, RecurringBill, Transaction, User, VariableBudget,
 )
 from app.services.daily_financial_health_service import build_daily_financial_health
 from app.services.account_balance_service import account_balance_at, household_balance_position
@@ -120,6 +120,65 @@ def test_proposed_and_reviewed_partial_payment(app):
         db.session.commit()
         reviewed = build_daily_financial_health(db.session, date(2026, 1, 13))
         assert reviewed["bills_paid"][0]["status"] == "partially_matched"
+
+
+def test_past_paypal_projection_is_not_overdue_and_does_not_match_unrelated_category(app):
+    with app.app_context():
+        account = setup_account()
+        apps = Category(name="Apps")
+        paypal_merchant = Merchant(name="PayPal Example Service | PreApproved Payment Bill User Payment")
+        unrelated = Merchant(name="Unrelated Card Merchant")
+        db.session.add_all([apps, paypal_merchant, unrelated]); db.session.flush()
+        add_transaction(account, date(2026, 1, 12), "-11.00", merchant_id=unrelated.id, category_id=apps.id)
+        bill = RecurringBill(
+            merchant_id=paypal_merchant.id,
+            category_id=apps.id,
+            display_name="PayPal Example Service | PreApproved Payment Bill User Payment",
+            expected_amount=Decimal("4.99"),
+            amount_tolerance=Decimal("10.00"),
+            cadence="monthly",
+            expected_next_date=date(2026, 1, 12),
+            active=True,
+        )
+        db.session.add(bill); db.session.commit()
+
+        result = build_daily_financial_health(db.session, date(2026, 1, 13))
+
+        assert not result["overdue_commitments"]
+        assert all(row["status"] != "overdue" for row in result["outstanding_bills"])
+        assert any(row["date"] > date(2026, 1, 13) for row in result["outstanding_bills"])
+        assert len(result["not_observed_patterns"]) == 1
+        assert result["not_observed_patterns"][0]["status"] == "not_observed"
+        assert result["not_observed_patterns"][0]["proposed_transaction"] is None
+
+
+def test_reviewed_one_off_payment_remains_matched(app):
+    with app.app_context():
+        account = setup_account()
+        payment = add_transaction(account, date(2026, 1, 12), "-75.00", description="Example Card Payment")
+        event = OneOffForecastEvent(
+            display_name="Example One-Off Bill",
+            amount=Decimal("75.00"),
+            event_date=date(2026, 1, 12),
+            direction="expense",
+            status="planned",
+        )
+        db.session.add(event); db.session.flush()
+        db.session.add(PaymentReconciliation(
+            source_type="one_off",
+            source_id=event.id,
+            expected_date=event.event_date,
+            expected_amount=event.amount,
+            status="matched",
+            matched_transaction_id=payment.id,
+        ))
+        db.session.commit()
+
+        result = build_daily_financial_health(db.session, date(2026, 1, 13))
+
+        assert not result["overdue_commitments"]
+        assert len(result["bills_paid"]) == 1
+        assert result["bills_paid"][0]["matched_transaction"].id == payment.id
 
 
 def test_daily_health_get_is_read_only_and_post_saves_buffer(client, app):

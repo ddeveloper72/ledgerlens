@@ -1,14 +1,86 @@
 import re
 
-from app.models import Transaction
+from app.models import Transaction, TransactionPatternRule
 
 
-def description_pattern_key(description):
-    """Normalize changing numeric references while preserving stable payee text."""
+PAYMENT_METHODS = {
+    "direct_debit": "Direct debit",
+    "card": "Visa debit / card",
+    "mobile_transfer": "Mobile transfer",
+    "sepa_transfer": "SEPA transfer",
+    "payroll": "Salary / payroll",
+    "cash": "Cash withdrawal",
+    "bank_transfer": "Bank transfer",
+    "unknown": "Unknown",
+}
+
+
+def payment_method_for(description, amount=None):
+    """Classify the payment rail without treating it as a spending category."""
+    text = " ".join((description or "").upper().split())
+    if text.startswith("D/D ") or text.startswith("DD "):
+        return "direct_debit"
+    if text.startswith(("VDP-", "VDC-")):
+        return "card"
+    if text.startswith("*MOBI "):
+        return "mobile_transfer"
+    if text.startswith("SEPA "):
+        return "sepa_transfer"
+    if "PAYROLL" in text or "PAYPATH" in text:
+        return "payroll"
+    if text.startswith(("ATM ", "CASH ")):
+        return "cash"
+    if text.startswith(("EFT ", "TRANSFER ")):
+        return "bank_transfer"
+    return "unknown"
+
+
+def description_pattern_key(description, amount=None):
+    """Return a stable payee pattern while preserving the payment rail separately."""
     normalized = " ".join((description or "").upper().split())
+    method = payment_method_for(normalized, amount)
+    normalized = re.sub(r"^(D/D|DD)\s+", "", normalized)
+    normalized = re.sub(r"^(VDP|VDC)-", "", normalized)
+    normalized = re.sub(r"^\*MOBI\s+", "", normalized)
+    normalized = re.sub(r"^SEPA\s+(PYMT|PAYMENT)?\s*", "", normalized)
+    # Short account suffixes identify distinct transfer sources/destinations and
+    # must not be erased with changing authorization/reference numbers.
+    account_suffixes = []
+    def preserve_account_suffix(match):
+        account_suffixes.append(match.group(0))
+        return f"ACCOUNTSUFFIXTOKEN{len(account_suffixes) - 1}"
+    normalized = re.sub(r"\bCURRENT-\d{3,4}\b", preserve_account_suffix, normalized)
+    normalized = re.sub(r"\bIE\d{8,}\b", "<BANKREF>", normalized)
+    normalized = re.sub(r"\b(?:REF|REFERENCE|AUTH|ID)[- :]*[A-Z0-9-]{5,}\b", "<REF>", normalized)
     normalized = re.sub(r"\d{3,}", "<NUMSEQ>", normalized)
     normalized = re.sub(r"\b\d+\b", "<NUM>", normalized)
-    return re.sub(r"\s+", " ", normalized).strip()
+    for index, value in enumerate(account_suffixes):
+        normalized = normalized.replace(f"ACCOUNTSUFFIXTOKEN{index}", value)
+    normalized = re.sub(r"\s+", " ", normalized).strip(" -")
+    return f"{method}:{normalized}" if normalized else method
+
+
+def transaction_direction(amount):
+    if amount is None:
+        return "any"
+    return "in" if amount > 0 else "out" if amount < 0 else "any"
+
+
+def matching_pattern_rule(session, account_id, description, amount):
+    """Find the most specific active durable classification rule."""
+    pattern = description_pattern_key(description, amount)
+    direction = transaction_direction(amount)
+    return (
+        session.query(TransactionPatternRule)
+        .filter(
+            TransactionPatternRule.active.is_(True),
+            TransactionPatternRule.pattern_key == pattern,
+            TransactionPatternRule.direction.in_((direction, "any")),
+            TransactionPatternRule.account_id.in_((account_id, None)),
+        )
+        .order_by(TransactionPatternRule.account_id.is_(None), TransactionPatternRule.direction == "any")
+        .first()
+    )
 
 
 def learned_pattern_classification(session, account_id, description, min_examples=2):
@@ -26,7 +98,7 @@ def learned_pattern_classification(session, account_id, description, min_example
         )
         .all()
     )
-    matches = [row for row in reviewed if description_pattern_key(row.cleaned_description) == pattern]
+    matches = [row for row in reviewed if description_pattern_key(row.cleaned_description, row.amount) == pattern]
     if len(matches) < min_examples:
         return None
     category_ids = {row.category_id for row in matches}

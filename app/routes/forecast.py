@@ -29,7 +29,7 @@ INCOME_FREQUENCIES = ("weekly", "fortnightly", "monthly", "irregular")
 COMMITMENT_FREQUENCIES = ("weekly", "fortnightly", "monthly", "quarterly", "annual", "one-off")
 COMMITMENT_TYPES = ("bill", "allowance", "groceries", "pet", "transport", "savings", "other")
 VARIABLE_BUDGET_FREQUENCIES = ("weekly", "fortnightly", "monthly", "payday")
-RECONCILIATION_STATUSES = ("expected", "matched", "partially_matched", "overdue", "skipped", "cancelled")
+RECONCILIATION_STATUSES = ("expected", "matched", "partially_matched", "overdue", "not_observed", "skipped", "cancelled")
 HOUSEHOLD_FLAGS = ("household", "personal", "shared", "reimbursable", "unknown")
 
 

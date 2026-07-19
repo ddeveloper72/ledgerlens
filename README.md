@@ -140,6 +140,8 @@ Confirmed Credit Union internal movements remain balance-affecting ledger entrie
 - Intelligence GET pages are read-only; detection and previews do not persist records.
 - Recurring suggestions show observation dates, typical amount, variation, frequency, next-date estimate, and confidence before confirmation.
 - Confirmed recurring rules remain editable and can be deactivated directly from Missing reports using **Not recurring**; source transactions are never deleted or reclassified by that action.
+- Past PayPal wallet recurrence projections are labelled **Not observed**, not overdue. A projected wallet/card purchase does not create a fee or debt when no matching transaction appears; future occurrences may remain in the conservative forecast.
+- A named recurring merchant must match merchant identity before a payment is proposed. A shared broad category alone cannot match one merchant's forecast to an unrelated card purchase.
 - Supported recurrence frequencies are weekly, fortnightly, monthly, quarterly, annual, and irregular.
 - Merchant mappings expose origin and status, with a read-only impact preview before optional application.
 - Savings recovery uses withdrawal, repayment, and adjustment events to calculate the current position.
@@ -177,6 +179,10 @@ The advisory layer is intentionally not implemented. Current outputs are user-re
 ## Changing Payment References
 
 LedgerLens normalizes long numeric reference sequences when comparing reviewed descriptions. When at least two reviewed transactions in the same account share a normalized pattern and unanimously agree on category and household flag, a future reference variant reuses that reviewed classification automatically. The review form also supports **Apply to matching payee pattern**.
+
+Canonical transaction patterns also separate the payment rail from the financial purpose. Direct debit, Visa debit/card, mobile transfer, SEPA transfer, payroll, cash, and bank-transfer markers are recorded as payment methods rather than categories. Review groups span changing bank references and variable amounts; approving a canonical group stores a durable account-and-direction rule that is reused by future imports.
+
+Accounts may be bound to a detected statement account key. When a bank statement reports a key that conflicts with the selected account—or is already bound to another account—the import is blocked before any batch or transaction is created. Original statement descriptions remain unchanged for audit.
 
 Known stable payees can use a canonical merchant identity. For example, changing `AN POST TV LIC` references map to `An Post TV Licence` while retaining the original transaction description for audit purposes.
 

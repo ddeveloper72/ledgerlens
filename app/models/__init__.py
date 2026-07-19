@@ -20,6 +20,7 @@ class Account(db.Model):
     balance_as_of = db.Column(db.Date, nullable=True)
     overdraft_limit = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     reporting_scope = db.Column(db.String(30), nullable=False, default="household_operating")
+    statement_account_key = db.Column(db.String(80), nullable=True, unique=True)
     created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
 
     transactions = db.relationship("Transaction", backref="account", lazy=True)
@@ -89,6 +90,8 @@ class Transaction(db.Model):
     posted_date = db.Column(db.Date, nullable=False)
     original_description = db.Column(db.String(255), nullable=False)
     cleaned_description = db.Column(db.String(255), nullable=False)
+    canonical_pattern = db.Column(db.String(255), nullable=True)
+    payment_method = db.Column(db.String(30), nullable=False, default="unknown")
 
     merchant_id = db.Column(db.Integer, db.ForeignKey("merchant.id"), nullable=True)
     category_id = db.Column(db.Integer, db.ForeignKey("category.id"), nullable=True)
@@ -122,6 +125,28 @@ class RecurringBill(db.Model):
 
     merchant = db.relationship("Merchant")
     category = db.relationship("Category")
+
+
+class TransactionPatternRule(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    account_id = db.Column(db.Integer, db.ForeignKey("account.id"), nullable=True)
+    pattern_key = db.Column(db.String(255), nullable=False)
+    direction = db.Column(db.String(10), nullable=False, default="any")
+    merchant_id = db.Column(db.Integer, db.ForeignKey("merchant.id"), nullable=True)
+    category_id = db.Column(db.Integer, db.ForeignKey("category.id"), nullable=True)
+    household_flag = db.Column(db.String(20), nullable=False, default="unknown")
+    payment_method = db.Column(db.String(30), nullable=False, default="unknown")
+    active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+    account = db.relationship("Account")
+    merchant = db.relationship("Merchant")
+    category = db.relationship("Category")
+
+    __table_args__ = (
+        db.UniqueConstraint("account_id", "pattern_key", "direction", name="uq_transaction_pattern_rule"),
+    )
 
 
 class RecurringCandidate(db.Model):

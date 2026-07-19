@@ -7,7 +7,7 @@
     <div class="panel-head">
         <h2 class="panel-title">Smart Bulk Suggestions</h2>
         <div class="flex items-center gap-3">
-            <span class="text-sm text-slate-600">Pattern + amount matching</span>
+            <span class="text-sm text-slate-600">Canonical pattern matching across variable amounts</span>
             <form action="{{ url_for('main.auto_align_reviews') }}" method="post">
                 <button type="submit" class="primary-btn">Auto-align Reviewed Outliers</button>
             </form>
@@ -15,8 +15,7 @@
     </div>
 
     <p class="text-sm text-slate-600 mb-4">
-        Use this to auto-group repeated payments where numeric references change.
-        Example: recurring credit-union payments with the same amount.
+        Review each stable payee pattern once. Changing references and amounts remain grouped, and the saved rule is reused on future imports.
     </p>
 
     <div class="overflow-x-auto">
@@ -25,7 +24,7 @@
                 <tr>
                     <th>Sample Description</th>
                     <th>Pattern Key</th>
-                    <th class="text-right">Amount</th>
+                    <th class="text-right">Amount range</th>
                     <th class="text-right">Rows</th>
                     <th>Account</th>
                     <th>Apply</th>
@@ -36,14 +35,14 @@
                 <tr>
                     <td>{{ group.sample_description }}</td>
                     <td><span class="smart-key">{{ group.pattern_key }}</span></td>
-                    <td class="text-right">{{ '%.2f'|format(group.amount) }}</td>
+                    <td class="text-right">{{ '%.2f'|format(group.amount_min) }}{% if group.amount_min != group.amount_max %} to {{ '%.2f'|format(group.amount_max) }}{% endif %}</td>
                     <td class="text-right">{{ group.count }}</td>
                     <td>{{ group.account_name }}</td>
                     <td>
                         <form action="{{ url_for('main.bulk_update_reviews') }}" method="post" class="review-form-grid review-form-grid--bulk">
                             <input type="hidden" name="account_id" value="{{ group.account_id }}">
                             <input type="hidden" name="pattern_key" value="{{ group.pattern_key }}">
-                            <input type="hidden" name="amount" value="{{ group.amount_value }}">
+                            <input type="hidden" name="direction" value="{{ group.direction }}">
                             <select name="category_name" class="file-input" data-category-select>
                                 <option value="">Uncategorized</option>
                                 {% for category_name in category_names %}

@@ -23,6 +23,10 @@
                 <option value="wallet">Wallet</option>
             </select>
 
+            <label for="statement_account_key" class="block text-sm font-semibold text-slate-700">Statement account key</label>
+            <input id="statement_account_key" name="statement_account_key" class="file-input"
+                placeholder="Detected account key, for safe imports">
+
             <button type="submit" class="primary-btn">Create Account</button>
         </form>
     </article>
@@ -57,7 +61,7 @@
                         <td>{{ row.internal_transfer_count }}</td>
                         <td class="text-right">{{ '%.2f'|format(row.balance) }}</td>
                         <td class="text-right">{{ '%.2f'|format(row.available_funds) }}</td>
-                        <td><form action="{{ url_for('main.update_account_balance', account_id=row.account.id) }}" method="post" class="space-y-2"><input name="current_balance" inputmode="decimal" class="file-input" value="{{ row.account.current_balance if row.account.current_balance is not none else '' }}" placeholder="Current balance" required><input name="overdraft_limit" inputmode="decimal" class="file-input" value="{{ row.account.overdraft_limit or '0.00' }}" placeholder="Overdraft limit" required><input type="date" name="balance_as_of" class="file-input" value="{{ row.account.balance_as_of or '' }}" required><select name="reporting_scope" class="file-input"><option value="household_operating" {{ 'selected' if row.account.reporting_scope == 'household_operating' else '' }}>Household operating</option><option value="personal" {{ 'selected' if row.account.reporting_scope == 'personal' else '' }}>Personal</option><option value="savings_tracking" {{ 'selected' if row.account.reporting_scope == 'savings_tracking' else '' }}>Savings tracking</option></select><button class="pill-link" type="submit">Save account settings</button></form></td>
+                        <td><form action="{{ url_for('main.update_account_balance', account_id=row.account.id) }}" method="post" class="space-y-2"><input name="current_balance" inputmode="decimal" class="file-input" value="{{ row.account.current_balance if row.account.current_balance is not none else '' }}" placeholder="Current balance" required><input name="overdraft_limit" inputmode="decimal" class="file-input" value="{{ row.account.overdraft_limit or '0.00' }}" placeholder="Overdraft limit" required><input type="date" name="balance_as_of" class="file-input" value="{{ row.account.balance_as_of or '' }}" required><input name="statement_account_key" class="file-input" value="{{ row.account.statement_account_key or '' }}" placeholder="Statement account key"><select name="reporting_scope" class="file-input"><option value="household_operating" {{ 'selected' if row.account.reporting_scope == 'household_operating' else '' }}>Household operating</option><option value="personal" {{ 'selected' if row.account.reporting_scope == 'personal' else '' }}>Personal</option><option value="savings_tracking" {{ 'selected' if row.account.reporting_scope == 'savings_tracking' else '' }}>Savings tracking</option></select><button class="pill-link" type="submit">Save account settings</button></form></td>
                     </tr>
                     {% else %}
                     <tr>

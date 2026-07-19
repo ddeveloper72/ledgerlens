@@ -76,6 +76,27 @@ def test_recurrence_accepts_variable_amounts_and_rejects_false_pattern(app):
         assert all(item["display_name"] != "Irregular Example" for item in detect_recurring_candidates(db.session))
 
 
+def test_recurrence_excludes_account_funding_transfers(app):
+    with app.app_context():
+        account = make_account()
+        merchant = Merchant(name="Example Account Topup")
+        db.session.add(merchant); db.session.flush()
+        for offset in range(4):
+            db.session.add(Transaction(
+                account_id=account.id,
+                merchant_id=merchant.id,
+                posted_date=date(2026, 1, 1) + timedelta(days=7 * offset),
+                original_description="Example Account Topup",
+                cleaned_description="Example Account Topup",
+                amount=Decimal("-20.00"),
+                payment_method="mobile_transfer",
+                review_state="reviewed",
+            ))
+        db.session.commit()
+
+        assert detect_recurring_candidates(db.session) == []
+
+
 def test_get_routes_do_not_mutate_intelligence_rows(client, app):
     with app.app_context():
         account = make_account()

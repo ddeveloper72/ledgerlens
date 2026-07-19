@@ -46,6 +46,7 @@ def create_app(config_class=Config):
         PaymentReconciliation,
         StatementImport,
         Transaction,
+        TransactionPatternRule,
         User,
         VariableBudget,
     )

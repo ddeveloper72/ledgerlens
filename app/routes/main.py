@@ -8,7 +8,7 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from app.extensions import db
 from app.models import (
     Account, Category, CategoryFlagRule, ImportBatch, Merchant, MerchantAlias,
-    RecurringBill, RecurringCandidate, SavingsGoal, Transaction, User,
+    RecurringBill, RecurringCandidate, SavingsGoal, Transaction, TransactionPatternRule, User,
 )
 from app.services.csv_import import (
     CSVImportError,
@@ -30,7 +30,9 @@ from app.services.imports.paypal_import import (
     restore_excluded_paypal_internal_rows,
 )
 from app.services.credit_union_internal import mark_credit_union_internal_movements
-from app.services.description_patterns import description_pattern_key
+from app.services.description_patterns import (
+    PAYMENT_METHODS, description_pattern_key, payment_method_for, transaction_direction,
+)
 from app.services.duplicate_maintenance import exclude_verified_duplicates, verified_duplicate_rows
 from app.services.money import parse_money
 from app.services.period_service import apply_transaction_period, resolve_period
@@ -50,19 +52,18 @@ _description_pattern_key = description_pattern_key
 
 
 def _build_smart_review_groups(pending_transactions):
-    """Build repeat-payment candidates grouped by account, amount, and normalized description pattern."""
+    """Group changing references and variable amounts under one canonical pattern."""
     grouped = defaultdict(list)
     for txn in pending_transactions:
         amount = Decimal(txn.amount).quantize(Decimal("0.01"))
-        pattern_key = _description_pattern_key(txn.cleaned_description)
+        pattern_key = _description_pattern_key(txn.cleaned_description, txn.amount)
+        direction = transaction_direction(txn.amount)
         if not pattern_key:
             continue
-        grouped[(txn.account_id, amount, pattern_key)].append(txn)
+        grouped[(txn.account_id, direction, pattern_key)].append(txn)
 
     candidates = []
-    for (account_id, amount, pattern_key), txns in grouped.items():
-        if len(txns) < 2:
-            continue
+    for (account_id, direction, pattern_key), txns in grouped.items():
 
         distinct_descriptions = {txn.cleaned_description for txn in txns}
         match_mode = "exact" if len(distinct_descriptions) == 1 else "pattern"
@@ -71,8 +72,9 @@ def _build_smart_review_groups(pending_transactions):
             {
                 "account_id": account_id,
                 "account_name": sample.account.name if sample.account else "Unknown account",
-                "amount": amount,
-                "amount_value": str(amount),
+                "direction": direction,
+                "amount_min": min(Decimal(row.amount) for row in txns),
+                "amount_max": max(Decimal(row.amount) for row in txns),
                 "pattern_key": pattern_key,
                 "sample_description": sample.cleaned_description,
                 "count": len(txns),
@@ -80,8 +82,24 @@ def _build_smart_review_groups(pending_transactions):
             }
         )
 
-    candidates.sort(key=lambda item: (item["count"], abs(item["amount"])), reverse=True)
-    return candidates[:20]
+    candidates.sort(key=lambda item: item["count"], reverse=True)
+    return candidates[:50]
+
+
+def _remember_pattern_rule(account_id, pattern_key, direction, category, household_flag, payment_method):
+    rule = TransactionPatternRule.query.filter_by(
+        account_id=account_id, pattern_key=pattern_key, direction=direction
+    ).first()
+    if not rule:
+        rule = TransactionPatternRule(
+            account_id=account_id, pattern_key=pattern_key, direction=direction
+        )
+        db.session.add(rule)
+    rule.category_id = category.id if category else None
+    rule.household_flag = household_flag
+    rule.payment_method = payment_method
+    rule.active = True
+    return rule
 
 
 def _auto_align_reviewed_classifications():
@@ -442,6 +460,7 @@ def accounts():
     if request.method == "POST":
         account_name = request.form.get("account_name", "").strip()
         account_type = request.form.get("account_type", "checking").strip().lower() or "checking"
+        statement_account_key = request.form.get("statement_account_key", "").strip() or None
 
         if not account_name:
             flash("Account name is required.", "error")
@@ -453,7 +472,11 @@ def accounts():
             db.session.add(user)
             db.session.flush()
 
-        account = Account(user_id=user.id, name=account_name, account_type=account_type)
+        if statement_account_key and Account.query.filter_by(statement_account_key=statement_account_key).first():
+            flash("That statement account key is already bound to another account.", "error")
+            return redirect(url_for("main.accounts"))
+        account = Account(user_id=user.id, name=account_name, account_type=account_type,
+                          statement_account_key=statement_account_key)
         db.session.add(account)
         db.session.commit()
         flash(f"Account '{account_name}' created.", "success")
@@ -487,6 +510,14 @@ def update_account_balance(account_id):
         account.current_balance = parse_money(request.form.get("current_balance"), allow_negative=True)
         account.overdraft_limit = parse_money(request.form.get("overdraft_limit", "0"), non_negative=True)
         account.balance_as_of = date.fromisoformat(request.form.get("balance_as_of", ""))
+        statement_account_key = request.form.get("statement_account_key", "").strip() or None
+        conflict = Account.query.filter(
+            Account.statement_account_key == statement_account_key,
+            Account.id != account.id,
+        ).first() if statement_account_key else None
+        if conflict:
+            raise ValueError("That statement account key is already bound to another account.")
+        account.statement_account_key = statement_account_key
         scope = request.form.get("reporting_scope", "household_operating")
         if scope not in {"household_operating", "personal", "savings_tracking"}:
             raise ValueError("Select a supported reporting scope.")
@@ -575,19 +606,13 @@ def reviews():
 
 @bp.route("/reviews/bulk-apply", methods=["POST"])
 def bulk_update_reviews():
-    """Apply category/flag updates to pending rows that share account, amount, and description pattern."""
+    """Review a canonical pattern once, across variable amounts and references."""
     account_id = request.form.get("account_id", type=int)
     pattern_key = request.form.get("pattern_key", "").strip()
-    amount_text = request.form.get("amount", "").strip()
+    direction = request.form.get("direction", "").strip()
 
-    if not account_id or not pattern_key or not amount_text:
-        flash("Bulk update requires account, amount, and pattern details.", "error")
-        return redirect(url_for("main.reviews"))
-
-    try:
-        amount = Decimal(amount_text).quantize(Decimal("0.01"))
-    except Exception:
-        flash("Invalid amount for bulk update.", "error")
+    if not account_id or not pattern_key or direction not in {"in", "out"}:
+        flash("Bulk update requires account, direction, and pattern details.", "error")
         return redirect(url_for("main.reviews"))
 
     category_name = request.form.get("category_name", "").strip()
@@ -607,14 +632,13 @@ def bulk_update_reviews():
             review_state="pending",
             excluded_from_analysis=False,
             internal_transfer=False,
-        )
-        .filter(Transaction.amount == amount)
-        .all()
+        ).all()
     )
 
     target_ids = [
         txn.id for txn in candidate_rows
-        if _description_pattern_key(txn.cleaned_description) == pattern_key
+        if transaction_direction(txn.amount) == direction
+        and _description_pattern_key(txn.cleaned_description, txn.amount) == pattern_key
     ]
     if not target_ids:
         flash("No matching pending transactions found for bulk update.", "error")
@@ -640,7 +664,14 @@ def bulk_update_reviews():
     for target in targets:
         target.category_id = category.id if category else None
         target.household_flag = household_flag
+        target.canonical_pattern = pattern_key
+        target.payment_method = payment_method_for(target.cleaned_description, target.amount)
         target.review_state = "reviewed" if review_state == "reviewed" else "pending"
+
+    _remember_pattern_rule(
+        account_id, pattern_key, direction, category, household_flag,
+        payment_method_for(targets[0].cleaned_description, targets[0].amount),
+    )
 
     if interlock_flag and category:
         if not linked_rule:
@@ -721,15 +752,28 @@ def update_review(transaction_id):
             excluded_from_analysis=False,
             internal_transfer=False,
         ).all()
-        pattern_key = description_pattern_key(transaction.cleaned_description)
-        target_ids = [row.id for row in candidates if description_pattern_key(row.cleaned_description) == pattern_key]
+        pattern_key = description_pattern_key(transaction.cleaned_description, transaction.amount)
+        direction = transaction_direction(transaction.amount)
+        target_ids = [row.id for row in candidates if transaction_direction(row.amount) == direction and description_pattern_key(row.cleaned_description, row.amount) == pattern_key]
         query = Transaction.query.filter(Transaction.id.in_(target_ids))
 
     targets = query.all()
     for target in targets:
         target.category_id = category.id if category else None
         target.household_flag = household_flag
+        target.canonical_pattern = description_pattern_key(target.cleaned_description, target.amount)
+        target.payment_method = payment_method_for(target.cleaned_description, target.amount)
         target.review_state = "reviewed" if review_state == "reviewed" else "pending"
+
+    if apply_scope == "matching_pattern" and targets:
+        _remember_pattern_rule(
+            transaction.account_id,
+            description_pattern_key(transaction.cleaned_description, transaction.amount),
+            transaction_direction(transaction.amount),
+            category,
+            household_flag,
+            payment_method_for(transaction.cleaned_description, transaction.amount),
+        )
 
     if interlock_flag and category:
         if not linked_rule:

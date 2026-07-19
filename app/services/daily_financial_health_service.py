@@ -60,12 +60,21 @@ def _proposed_match(session, source, expected_date, expected_amount, tolerance, 
         merchant_match = getattr(source, "merchant_id", None) and row.merchant_id == source.merchant_id
         category_match = getattr(source, "category_id", None) and row.category_id == source.category_id
         difference = abs(abs(_money(row.amount)) - expected_amount)
-        if (merchant_match or category_match) and difference <= tolerance:
+        # A category is far too broad to match one named merchant to another
+        # (for example, Google to Audible merely because both are Apps).
+        identity_match = merchant_match if getattr(source, "merchant_id", None) else category_match
+        if identity_match and difference <= tolerance:
             candidates.append((difference, abs((row.posted_date - expected_date).days), row))
     if not candidates: return None, None
     row = min(candidates, key=lambda item: (item[0], item[1]))[2]
     status = "matched" if abs(_money(row.amount)) >= expected_amount else "partially_matched"
     return row, status
+
+
+def _is_observed_spending_pattern(source_type, source):
+    """Return true for wallet/card patterns whose absence does not create debt."""
+    merchant_name = source.merchant.name if getattr(source, "merchant", None) else ""
+    return source_type == "recurring_bill" and merchant_name.lower().startswith("paypal ")
 
 
 def build_daily_financial_health(session, selected_date, horizon_days=30):
@@ -119,16 +128,22 @@ def build_daily_financial_health(session, selected_date, horizon_days=30):
                  occurrence_dates(first, frequency, selected_date - timedelta(days=35), end_date))
         for value in dates:
             saved = reconciliations.get((source_type, source.id, value))
-            status = saved.status if saved else ("overdue" if value < selected_date else "expected")
+            status = saved.status if saved else (
+                "not_observed"
+                if value < selected_date and _is_observed_spending_pattern(source_type, source)
+                else "overdue" if value < selected_date else "expected"
+            )
             proposed, proposed_status = _proposed_match(session, source, value, amount, tolerance, getattr(source, "account_id", None))
             occurrences.append({"source_type": source_type, "source_id": source.id, "date": value, "name": source.display_name or "Expected payment", "amount": amount, "status": status, "matched_transaction": saved.matched_transaction if saved else None, "proposed_transaction": proposed, "proposed_status": proposed_status, "type": item_type, "essential": item_type in {"bill", "groceries", "pet", "transport"} or getattr(source, "essential", False), "label": "Estimated" if estimated else "Forecast"})
     for item in session.query(OneOffForecastEvent).filter_by(status="planned").all():
         if selected_date - timedelta(days=35) <= item.event_date <= end_date and item.direction == "expense":
-            occurrences.append({"source_type": "one_off", "source_id": item.id, "date": item.event_date, "name": item.display_name, "amount": _money(item.amount), "status": "overdue" if item.event_date < selected_date else "expected", "matched_transaction": None, "proposed_transaction": None, "proposed_status": None, "type": "one_off", "essential": False, "label": "Forecast"})
+            saved = reconciliations.get(("one_off", item.id, item.event_date))
+            occurrences.append({"source_type": "one_off", "source_id": item.id, "date": item.event_date, "name": item.display_name, "amount": _money(item.amount), "status": saved.status if saved else ("overdue" if item.event_date < selected_date else "expected"), "matched_transaction": saved.matched_transaction if saved else None, "proposed_transaction": None, "proposed_status": None, "type": "one_off", "essential": False, "label": "Forecast"})
     paid = [row for row in occurrences if row["status"] in {"matched", "partially_matched"} and row["date"] <= selected_date]
     outstanding = [row for row in occurrences if row["status"] in {"expected", "overdue", "partially_matched"} and row["date"] <= forecast_end]
     upcoming = [row for row in outstanding if selected_date < row["date"] <= selected_date + timedelta(days=5)]
     overdue = [row for row in outstanding if row["status"] == "overdue"]
+    not_observed = [row for row in occurrences if row["status"] == "not_observed"]
     events = income_events + [{"date": row["date"], "name": row["name"], "amount": -row["amount"], "type": row["type"], "label": row["label"]} for row in outstanding if row["date"] > selected_date]
     events.sort(key=lambda row: (row["date"], 0 if row["amount"] < 0 else 1))
     running = balance; minimum = balance; minimum_date = selected_date; pre_income = balance
@@ -162,5 +177,6 @@ def build_daily_financial_health(session, selected_date, horizon_days=30):
     if overdue: evidence.append(f"{len(overdue)} expected payment(s) are overdue and unmatched.")
     if not evidence: evidence.append("Expected commitments remain covered above the configured safety buffer.")
     result = {"selected_date": selected_date, "balance": _money(balance), "joint_account_current_balance": _money(balance), "joint_account_overdraft": balance_position["overdraft_limit"], "joint_account_available_funds": balance_position["available_funds"], "joint_account_available_balance": _money(balance), "actual_income": _money(actual_income), "actual_expenditure": _money(actual_spend), "total_household_income_expected": _money(total_income_expected), "household_contributions_expected": _money(household_contributions_expected), "household_contributions_received": sum((row["amount"] for row in received_contributions), Decimal("0.00")), "household_contributions_due": sum((row["amount"] for row in due_contributions), Decimal("0.00")), "income_excluded_from_forecast": _money(income_excluded), "estimated_household_spending": sum((row["amount"] for row in occurrences if row["label"] == "Estimated" and row["date"] > selected_date), Decimal("0.00")), "income_calculation": income_calculation, "contribution_occurrences": all_contributions, "bills_paid": paid, "essential_bills_paid": [row for row in paid if row["essential"]], "outstanding_bills": outstanding, "upcoming_five_days": upcoming, "overdue_commitments": overdue, "next_income_date": next_income, "days_until_income": (next_income - selected_date).days if next_income else None, "projected_pre_income_balance": _money(pre_income) if next_income else None, "minimum_projected_balance": _money(minimum), "minimum_available_funds": _money(minimum_available_funds), "minimum_balance_date": minimum_date, "conservative_projected_balance": _money(running), "required_contribution": _money(required_contribution), "payment_shortfall": _money(payment_shortfall), "contribution_deadline": contribution_deadline, "projected_position_after_contribution": projected_after_contribution, "payments_before_next_income": payments_before_income, "payments_before_next_income_total": _money(payments_before_income_total), "state": state, "evidence": evidence, "data_confidence": confidence, "safety_buffer": safety_buffer, "events": events}
+    result["not_observed_patterns"] = not_observed
     result["recommendations"] = generate_financial_guidance(result)
     return result
