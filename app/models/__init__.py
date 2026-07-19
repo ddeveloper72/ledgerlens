@@ -235,8 +235,11 @@ class ContributionReconciliation(db.Model):
     income_allocation_id = db.Column(db.Integer, db.ForeignKey("income_allocation.id"), nullable=False)
     expected_date = db.Column(db.Date, nullable=False)
     expected_amount = db.Column(db.Numeric(12, 2), nullable=False)
+    matched_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    outstanding_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     status = db.Column(db.String(20), nullable=False, default="expected")
     matched_transaction_id = db.Column(db.Integer, db.ForeignKey("transaction.id"), nullable=True)
+    matched_at = db.Column(db.DateTime, nullable=True)
     reviewed_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
 
@@ -244,6 +247,22 @@ class ContributionReconciliation(db.Model):
     matched_transaction = db.relationship("Transaction")
 
     __table_args__ = (db.UniqueConstraint("income_allocation_id", "expected_date", name="uq_contribution_occurrence"),)
+
+
+class ContributionMatch(db.Model):
+    """One explicitly reviewed incoming amount applied to an expectation."""
+    id = db.Column(db.Integer, primary_key=True)
+    contribution_reconciliation_id = db.Column(db.Integer, db.ForeignKey("contribution_reconciliation.id"), nullable=False)
+    transaction_id = db.Column(db.Integer, db.ForeignKey("transaction.id"), nullable=False)
+    accepted_amount = db.Column(db.Numeric(12, 2), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default="accepted")
+    matched_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+
+    reconciliation = db.relationship("ContributionReconciliation", backref="matches")
+    transaction = db.relationship("Transaction")
+
+    __table_args__ = (db.UniqueConstraint("transaction_id", name="uq_contribution_match_transaction"),)
 
 
 class PlannedCommitment(db.Model):
@@ -308,6 +327,52 @@ class VariableBudget(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
 
     category = db.relationship("Category")
+
+
+class HouseholdSpendingSummary(db.Model):
+    """Privacy-preserving category total; never a synthetic bank transaction."""
+    id = db.Column(db.Integer, primary_key=True)
+    period_start = db.Column(db.Date, nullable=False)
+    period_end = db.Column(db.Date, nullable=False)
+    category_id = db.Column(db.Integer, db.ForeignKey("category.id"), nullable=True)
+    category_name = db.Column(db.String(120), nullable=False)
+    reported_amount = db.Column(db.Numeric(12, 2), nullable=False)
+    is_estimated = db.Column(db.Boolean, nullable=False, default=False)
+    source_type = db.Column(db.String(30), nullable=False, default="manual_summary")
+    confidence = db.Column(db.String(20), nullable=False, default="moderate")
+    note = db.Column(db.Text, nullable=True)
+    submitted_date = db.Column(db.Date, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+
+    category = db.relationship("Category")
+
+
+class BudgetCalibrationHistory(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    variable_budget_id = db.Column(db.Integer, db.ForeignKey("variable_budget.id"), nullable=False)
+    previous_value = db.Column(db.Numeric(12, 2), nullable=False)
+    new_value = db.Column(db.Numeric(12, 2), nullable=False)
+    effective_date = db.Column(db.Date, nullable=False)
+    change_source = db.Column(db.String(30), nullable=False)
+    reason = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+
+    variable_budget = db.relationship("VariableBudget", backref="calibration_history")
+
+
+class ForecastComparison(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    category = db.Column(db.String(120), nullable=False)
+    forecast_amount = db.Column(db.Numeric(12, 2), nullable=False)
+    actual_amount = db.Column(db.Numeric(12, 2), nullable=True)
+    variance_amount = db.Column(db.Numeric(12, 2), nullable=True)
+    variance_percentage = db.Column(db.Numeric(9, 2), nullable=True)
+    forecast_date = db.Column(db.Date, nullable=False)
+    actual_date = db.Column(db.Date, nullable=True)
+    date_variance = db.Column(db.Integer, nullable=True)
+    match_status = db.Column(db.String(30), nullable=False)
+    confidence = db.Column(db.String(20), nullable=False, default="moderate")
+    created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
 
 
 class PaymentReconciliation(db.Model):

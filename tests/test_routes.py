@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from app.extensions import db
-from app.models import Account, Category, CategoryFlagRule, ImportBatch, MerchantAlias, SavingsGoal, StatementImport, Transaction, User
+from app.models import Account, Category, CategoryFlagRule, ForecastComparison, HouseholdSpendingSummary, ImportBatch, MerchantAlias, SavingsGoal, StatementImport, Transaction, User
 from app.routes.main import _description_pattern_key
 
 
@@ -486,3 +486,39 @@ def test_savings_recovery_route_saves_goal(client, app):
         assert goal is not None
         assert str(goal.current_amount) == "250.00"
         assert str(goal.target_amount) == "1000.00"
+
+
+def test_forecast_accuracy_get_is_read_only_and_filters_period(client, app):
+    with app.app_context():
+        db.session.add(ForecastComparison(category="Example category", forecast_amount=Decimal("50.00"), actual_amount=Decimal("55.00"), variance_amount=Decimal("5.00"), variance_percentage=Decimal("10.00"), forecast_date=date.today(), actual_date=date.today(), date_variance=0, match_status="over_forecast", confidence="high"))
+        db.session.commit()
+        before = ForecastComparison.query.count()
+    response = client.get("/forecast-accuracy?period=current_month")
+    body = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "Forecast Accuracy" in body
+    assert "Example category" in body
+    assert "Over Forecast" in body
+    with app.app_context():
+        assert ForecastComparison.query.count() == before
+
+
+def test_household_spending_summary_get_is_read_only_and_post_saves_no_transaction(client, app):
+    get_response = client.get("/household-spending-summaries")
+    assert get_response.status_code == 200
+    assert "Household Spending Summaries" in get_response.get_data(as_text=True)
+    with app.app_context():
+        assert HouseholdSpendingSummary.query.count() == 0
+        transaction_count = Transaction.query.count()
+    response = client.post("/household-spending-summaries", data={
+        "period_start": date.today().replace(day=1).isoformat(), "period_end": date.today().isoformat(),
+        "category_name": "Example category", "amount": "42.50", "is_estimated": "on",
+        "source_type": "manual_summary", "confidence": "moderate", "note": "Generic summary",
+    }, follow_redirects=True)
+    assert response.status_code == 200
+    assert "saved without creating a bank transaction" in response.get_data(as_text=True)
+    with app.app_context():
+        row = HouseholdSpendingSummary.query.one()
+        assert row.reported_amount == Decimal("42.50")
+        assert row.is_estimated is True
+        assert Transaction.query.count() == transaction_count

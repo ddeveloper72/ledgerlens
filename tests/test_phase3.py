@@ -33,7 +33,7 @@ def test_weekly_and_fortnightly_commitments_and_annual_projection():
     short = forecast(commitments=[weekly, fortnightly], end=date(2026, 1, 15))
     assert short["total_expected_expenditure"] == Decimal("80.00")
     yearly = forecast(commitments=[annual], end=date(2027, 6, 1))
-    assert [event["date"] for event in yearly["events"]] == [date(2026, 6, 1), date(2027, 6, 1)]
+    assert [event["date"] for event in yearly["events"]] == [date(2026, 6, 2), date(2027, 6, 1)]
 
 
 def test_chronological_running_balance_and_minimum_before_close():

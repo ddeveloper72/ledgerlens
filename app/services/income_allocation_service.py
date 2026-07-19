@@ -1,8 +1,9 @@
 from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
-from app.models import ContributionReconciliation, Transaction
+from app.models import ContributionMatch, ContributionReconciliation, Transaction
 from app.services.cashflow_forecast_service import occurrence_dates
+from app.services.contribution_reconciliation_service import reconciliation_amounts, reconciliation_status
 
 ALLOCATION_TYPES = ("household_contribution", "personal", "savings", "unknown")
 ALLOCATION_STATUSES = ("estimated", "confirmed", "actual", "inactive")
@@ -52,12 +53,32 @@ def income_breakdown(schedule, event_date):
     return {"total": total, "household": min(household, total), "personal": personal, "savings": savings, "unallocated": max(total - known, Decimal("0.00"))}
 
 
+def validate_allocation_totals(schedule, candidate=None):
+    """Reject active fixed/percentage allocations that overlap above gross pay."""
+    rows = [row for row in schedule.allocations if row.status != "inactive" and row is not candidate]
+    if candidate is not None and candidate.status != "inactive":
+        rows.append(candidate)
+    for row in rows:
+        if row.percentage is not None and not Decimal("0") <= Decimal(row.percentage) <= Decimal("100"):
+            raise ValueError("Allocation percentages must be between 0 and 100.")
+    boundaries = {row.effective_from for row in rows}
+    boundaries.update(row.effective_to + timedelta(days=1) for row in rows if row.effective_to)
+    for event_date in sorted(boundaries):
+        active = [row for row in rows if row.effective_from <= event_date and (row.effective_to is None or event_date <= row.effective_to)]
+        total = sum((allocation_amount(row, schedule.amount) for row in active), Decimal("0.00"))
+        expected = money(schedule.amount)
+        if total > expected:
+            raise ValueError(f"Active allocations total {total:.2f}, but expected income is {expected:.2f}. Reduce one or more allocations before saving.")
+    return True
+
+
 def proposed_contribution_match(session, allocation, expected_date, expected_amount, tolerance=Decimal("0.01")):
     query = session.query(Transaction).filter(
         Transaction.amount > 0,
         Transaction.excluded_from_analysis.is_(False),
         Transaction.posted_date >= expected_date - timedelta(days=5),
         Transaction.posted_date <= expected_date + timedelta(days=5),
+        ~Transaction.id.in_(session.query(ContributionMatch.transaction_id)),
     )
     if allocation.destination_account_id:
         query = query.filter(Transaction.account_id == allocation.destination_account_id)
@@ -93,9 +114,10 @@ def contribution_occurrences(session, schedules, start_date, end_date, selected_
                 reconciliation = saved.get((allocation.id, event_date))
                 if allocation.frequency == "irregular" and reconciliation:
                     amount = money(reconciliation.expected_amount)
-                status = reconciliation.status if reconciliation else ("overdue" if event_date < selected_date else "expected")
+                status = reconciliation_status(reconciliation, selected_date) if reconciliation else ("overdue" if event_date < selected_date else "expected")
+                amounts = reconciliation_amounts(reconciliation) if reconciliation else {"expected_amount": amount, "matched_amount": Decimal("0.00"), "outstanding_amount": amount}
                 proposed, proposed_status = proposed_contribution_match(session, allocation, event_date, amount)
-                results.append({"schedule": schedule, "allocation": allocation, "date": event_date, "total_income": money(schedule.amount), "amount": amount, "status": status, "matched_transaction": reconciliation.matched_transaction if reconciliation else None, "proposed_transaction": proposed, "proposed_status": proposed_status})
+                results.append({"schedule": schedule, "allocation": allocation, "date": event_date, "total_income": money(schedule.amount), "amount": amount, **amounts, "status": status, "matched_transaction": reconciliation.matched_transaction if reconciliation else None, "proposed_transaction": proposed, "proposed_status": proposed_status})
     return results
 
 

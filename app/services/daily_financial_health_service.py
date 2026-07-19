@@ -8,11 +8,24 @@ from app.models import (
 from app.services.cashflow_forecast_service import occurrence_dates
 from app.services.financial_guidance_service import generate_financial_guidance
 from app.services.income_allocation_service import contribution_occurrences, income_breakdown
-from app.services.account_balance_service import household_balance_position
+from app.services.account_balance_service import household_balance_evidence
+from app.services.confidence_service import calculate_forecast_confidence
+from app.services.irish_working_day_service import next_irish_working_day, uses_irish_banking_day
 
 
 def _money(value):
     return Decimal(value or 0).quantize(Decimal("0.01"))
+
+
+def intervention_thresholds(minimum_balance, overdraft_limit, safety_buffer):
+    minimum = _money(minimum_balance)
+    overdraft = _money(overdraft_limit)
+    buffer_value = _money(safety_buffer)
+    return {
+        "payment_failure_prevention_amount": _money(max(-(minimum + overdraft), Decimal("0.00"))),
+        "overdraft_avoidance_amount": _money(max(-minimum, Decimal("0.00"))),
+        "safety_buffer_preservation_amount": _money(max(buffer_value - minimum, Decimal("0.00"))),
+    }
 
 
 def _confidence(session, selected_date, estimated_count, allocation_reasons=(), account_ids=None):
@@ -83,8 +96,10 @@ def build_daily_financial_health(session, selected_date, horizon_days=30):
     safety_buffer = _money(setting.safety_buffer if setting else 0)
     incomes = session.query(IncomeSchedule).filter_by(active=True).all()
     destination_ids = {allocation.destination_account_id for schedule in incomes for allocation in schedule.allocations if allocation.allocation_type == "household_contribution" and allocation.status != "inactive" and allocation.destination_account_id}
-    destination_accounts = session.query(Account).filter(Account.id.in_(destination_ids)).all() if destination_ids else []
-    balance_position = household_balance_position(session, destination_accounts, selected_date)
+    destination_accounts = session.query(Account).filter(Account.id.in_(destination_ids)).all() if destination_ids else session.query(Account).filter_by(reporting_scope="household_operating").all()
+    if not destination_ids:
+        destination_ids = {account.id for account in destination_accounts}
+    balance_position = household_balance_evidence(session, destination_accounts, selected_date)
     actual_query = session.query(Transaction).filter(Transaction.posted_date <= selected_date, Transaction.excluded_from_analysis.is_(False))
     actual_rows = actual_query.filter(Transaction.account_id.in_(destination_ids)).all() if destination_ids else []
     analysis_rows = [row for row in actual_rows if not row.internal_transfer]
@@ -126,7 +141,10 @@ def build_daily_financial_health(session, selected_date, horizon_days=30):
     for source_type, source, first, frequency, amount, tolerance, item_type, estimated in sources:
         dates = ([row["date"] for row in income_events] if frequency == "payday" else
                  occurrence_dates(first, frequency, selected_date - timedelta(days=35), end_date))
-        for value in dates:
+        for scheduled_value in dates:
+            value = next_irish_working_day(scheduled_value) if uses_irish_banking_day(source_type, item_type) else scheduled_value
+            if value > end_date:
+                continue
             saved = reconciliations.get((source_type, source.id, value))
             status = saved.status if saved else (
                 "not_observed"
@@ -135,6 +153,7 @@ def build_daily_financial_health(session, selected_date, horizon_days=30):
             )
             proposed, proposed_status = _proposed_match(session, source, value, amount, tolerance, getattr(source, "account_id", None))
             occurrences.append({"source_type": source_type, "source_id": source.id, "date": value, "name": source.display_name or "Expected payment", "amount": amount, "status": status, "matched_transaction": saved.matched_transaction if saved else None, "proposed_transaction": proposed, "proposed_status": proposed_status, "type": item_type, "essential": item_type in {"bill", "groceries", "pet", "transport"} or getattr(source, "essential", False), "label": "Estimated" if estimated else "Forecast"})
+            occurrences[-1].update({"scheduled_date": scheduled_value, "processing_date_adjusted": value != scheduled_value})
     for item in session.query(OneOffForecastEvent).filter_by(status="planned").all():
         if selected_date - timedelta(days=35) <= item.event_date <= end_date and item.direction == "expense":
             saved = reconciliations.get(("one_off", item.id, item.event_date))
@@ -153,16 +172,23 @@ def build_daily_financial_health(session, selected_date, horizon_days=30):
         event["running_balance"] = _money(running)
         if running < minimum: minimum, minimum_date = running, event["date"]
         if next_income and event["date"] == next_income and event["amount"] > 0: pre_income = running - event["amount"]
-    required_contribution = max(safety_buffer - minimum, Decimal("0.00"))
     minimum_available_funds = minimum + balance_position["overdraft_limit"]
-    payment_shortfall = max(safety_buffer - minimum_available_funds, Decimal("0.00"))
+    thresholds = intervention_thresholds(minimum, balance_position["overdraft_limit"], safety_buffer)
+    payment_failure_prevention_amount = thresholds["payment_failure_prevention_amount"]
+    overdraft_avoidance_amount = thresholds["overdraft_avoidance_amount"]
+    safety_buffer_preservation_amount = thresholds["safety_buffer_preservation_amount"]
+    # Compatibility aliases for existing callers.
+    required_contribution = safety_buffer_preservation_amount
+    payment_shortfall = payment_failure_prevention_amount
     contribution_deadline = selected_date if balance < safety_buffer else next((event["date"] for event in events if event.get("running_balance") is not None and event["running_balance"] < safety_buffer), None)
     payments_before_income = [row for row in outstanding if selected_date < row["date"] <= forecast_end]
     payments_before_income_total = sum((row["amount"] for row in payments_before_income), Decimal("0.00"))
     projected_after_contribution = _money(minimum + required_contribution)
     estimated_count = sum(row["label"] == "Estimated" for row in occurrences)
     if estimated_count: allocation_reasons.append("Some household spending occurs through a non-visible account; estimated costs are used.")
-    confidence = _confidence(session, selected_date, estimated_count, list(dict.fromkeys(allocation_reasons)), destination_ids)
+    confidence = calculate_forecast_confidence(session, selected_date=selected_date,
+        estimated_event_count=estimated_count, allocation_reasons=list(dict.fromkeys(allocation_reasons)),
+        account_ids=destination_ids)
     essential_uncovered = any(row["essential"] and row["status"] == "overdue" for row in outstanding)
     if confidence["level"] == "insufficient": state = "insufficient_data"
     elif minimum_available_funds < 0: state = "critical"
@@ -177,6 +203,17 @@ def build_daily_financial_health(session, selected_date, horizon_days=30):
     if overdue: evidence.append(f"{len(overdue)} expected payment(s) are overdue and unmatched.")
     if not evidence: evidence.append("Expected commitments remain covered above the configured safety buffer.")
     result = {"selected_date": selected_date, "balance": _money(balance), "joint_account_current_balance": _money(balance), "joint_account_overdraft": balance_position["overdraft_limit"], "joint_account_available_funds": balance_position["available_funds"], "joint_account_available_balance": _money(balance), "actual_income": _money(actual_income), "actual_expenditure": _money(actual_spend), "total_household_income_expected": _money(total_income_expected), "household_contributions_expected": _money(household_contributions_expected), "household_contributions_received": sum((row["amount"] for row in received_contributions), Decimal("0.00")), "household_contributions_due": sum((row["amount"] for row in due_contributions), Decimal("0.00")), "income_excluded_from_forecast": _money(income_excluded), "estimated_household_spending": sum((row["amount"] for row in occurrences if row["label"] == "Estimated" and row["date"] > selected_date), Decimal("0.00")), "income_calculation": income_calculation, "contribution_occurrences": all_contributions, "bills_paid": paid, "essential_bills_paid": [row for row in paid if row["essential"]], "outstanding_bills": outstanding, "upcoming_five_days": upcoming, "overdue_commitments": overdue, "next_income_date": next_income, "days_until_income": (next_income - selected_date).days if next_income else None, "projected_pre_income_balance": _money(pre_income) if next_income else None, "minimum_projected_balance": _money(minimum), "minimum_available_funds": _money(minimum_available_funds), "minimum_balance_date": minimum_date, "conservative_projected_balance": _money(running), "required_contribution": _money(required_contribution), "payment_shortfall": _money(payment_shortfall), "contribution_deadline": contribution_deadline, "projected_position_after_contribution": projected_after_contribution, "payments_before_next_income": payments_before_income, "payments_before_next_income_total": _money(payments_before_income_total), "state": state, "evidence": evidence, "data_confidence": confidence, "safety_buffer": safety_buffer, "events": events}
+    result["payment_failure_prevention_amount"] = _money(payment_failure_prevention_amount)
+    result["overdraft_avoidance_amount"] = _money(overdraft_avoidance_amount)
+    result["safety_buffer_preservation_amount"] = _money(safety_buffer_preservation_amount)
+    result["household_contributions_received"] = _money(sum((row["matched_amount"] for row in received_contributions), Decimal("0.00")))
+    result["household_contributions_outstanding"] = _money(sum((row["outstanding_amount"] for row in due_contributions), Decimal("0.00")))
+    result["household_contributions_due"] = result["household_contributions_outstanding"]
+    result.update({"balance_status": balance_position["status"], "balance_label": balance_position["label"],
+        "balance_information_date": balance_position["latest_information_date"],
+        "balance_as_of": balance_position["latest_information_date"],
+        "balance_is_stale": balance_position["is_stale"],
+        "balance_is_reconstructed": balance_position["is_reconstructed"]})
     result["not_observed_patterns"] = not_observed
     result["recommendations"] = generate_financial_guidance(result)
     return result

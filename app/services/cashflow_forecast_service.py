@@ -2,6 +2,8 @@ from calendar import monthrange
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_CEILING
 
+from app.services.irish_working_day_service import next_irish_working_day, uses_irish_banking_day
+
 
 def _money(value):
     return Decimal(value or 0).quantize(Decimal("0.01"))
@@ -79,12 +81,19 @@ def build_cashflow_forecast(
     for bill in recurring_bills:
         if not bill.active or not bill.expected_next_date or bill.expected_amount is None:
             continue
-        for event_date in occurrence_dates(bill.expected_next_date, bill.cadence, start_date, end_date):
+        for scheduled_date in occurrence_dates(bill.expected_next_date, bill.cadence, start_date - timedelta(days=3), end_date):
+            event_date = next_irish_working_day(scheduled_date)
+            if not start_date <= event_date <= end_date:
+                continue
             events.append({"date": event_date, "display_name": bill.display_name or (bill.merchant.name if bill.merchant else "Recurring bill"), "amount": -_money(bill.expected_amount), "direction": "expense", "source": "Confirmed recurring bill", "label": "Forecast"})
     for commitment in planned_commitments:
         if not commitment.active:
             continue
-        for event_date in occurrence_dates(commitment.next_expected_date, commitment.frequency, start_date, end_date, commitment.end_date):
+        search_start = start_date - timedelta(days=3) if uses_irish_banking_day("planned_commitment", commitment.commitment_type) else start_date
+        for scheduled_date in occurrence_dates(commitment.next_expected_date, commitment.frequency, search_start, end_date, commitment.end_date):
+            event_date = next_irish_working_day(scheduled_date) if uses_irish_banking_day("planned_commitment", commitment.commitment_type) else scheduled_date
+            if not start_date <= event_date <= end_date:
+                continue
             events.append({"date": event_date, "display_name": commitment.display_name, "amount": -_money(commitment.amount), "direction": "expense", "source": "Planned commitment", "label": "Forecast"})
     for event in one_off_events:
         if event.status != "planned" or not start_date <= event.event_date <= end_date:

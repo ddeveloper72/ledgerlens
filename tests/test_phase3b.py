@@ -187,7 +187,15 @@ def test_daily_health_get_is_read_only_and_post_saves_buffer(client, app):
         before = (Transaction.query.count(), PaymentReconciliation.query.count(), HouseholdForecastSetting.query.count())
     response = client.get(f"/daily-health?date={date.today().isoformat()}")
     assert response.status_code == 200
-    assert "Daily Financial Health" in response.get_data(as_text=True)
+    body = response.get_data(as_text=True)
+    assert "Daily Financial Health" in body
+    assert "Latest imported balance" in body
+    assert "Prevent failed payments" in body
+    assert "Avoid overdraft use" in body
+    assert "Preserve safety buffer" in body
+    assert "Forecast confidence:" in body
+    assert "How this was calculated" in body
+    assert "Contribution amount outstanding" in body
     with app.app_context():
         assert (Transaction.query.count(), PaymentReconciliation.query.count(), HouseholdForecastSetting.query.count()) == before
     client.post("/daily-health/settings", data={"safety_buffer": "123.45", "selected_date": date.today().isoformat()})

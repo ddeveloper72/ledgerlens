@@ -15,4 +15,10 @@ def generate_financial_guidance(snapshot):
         items.append({"severity": "warning", "title": "Review unmatched expected payments", "explanation": "One or more expected payments are overdue without a reviewed match.", "evidence": f"{len(snapshot['overdue_commitments'])} overdue occurrence(s).", "start_date": snapshot["selected_date"], "end_date": snapshot["selected_date"] + timedelta(days=5), "action": "Review proposed transaction matches or mark the occurrence skipped.", "kind": "informational"})
     if snapshot["data_confidence"]["level"] in {"low", "insufficient"}:
         items.append({"severity": "warning", "title": "Update incomplete financial data", "explanation": "The forecast has limited supporting data and should not be treated as definitive.", "evidence": "; ".join(snapshot["data_confidence"]["reasons"]), "start_date": snapshot["selected_date"], "end_date": snapshot["selected_date"], "action": "Import recent statements and review pending transactions.", "kind": "informational"})
+    outstanding = snapshot.get("household_contributions_outstanding", Decimal("0"))
+    if outstanding > 0:
+        items.append({"severity": "attention", "title": "Contribution shortfall", "explanation": "Based on reviewed matches, part of the expected household contribution remains outstanding.", "evidence": f"Outstanding contribution amount {outstanding:.2f}.", "start_date": snapshot["selected_date"], "end_date": snapshot["next_income_date"], "action": "Consider reviewing the expected contribution and accepted incoming matches.", "kind": "informational"})
+    for item in items:
+        item.setdefault("affected_account_or_category", "Household operating account")
+        item.setdefault("confidence", snapshot["data_confidence"]["level"])
     return items

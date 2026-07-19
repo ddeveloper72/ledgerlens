@@ -8,8 +8,14 @@ from app.models import (
     Account, Category, ContributionReconciliation, IncomeAllocation, IncomeSchedule,
     OneOffForecastEvent, PlannedCommitment, HouseholdForecastSetting,
     PaymentReconciliation, RecurringBill, SavingsGoal,
-    SinkingFundProvision, Transaction, VariableBudget,
+    SinkingFundProvision, Transaction, VariableBudget, ForecastComparison, HouseholdSpendingSummary,
 )
+from app.services.forecast_calibration_service import accuracy_summary, compare_forecast_actual
+from app.services.household_spending_summary_service import (
+    CONFIDENCE_VALUES, SOURCE_TYPES as SUMMARY_SOURCE_TYPES, create_summary,
+    summaries_for_period,
+)
+from app.services.period_service import resolve_period
 from app.services.cashflow_forecast_service import (
     build_cashflow_forecast, occurrence_dates, sinking_fund_recommendation,
 )
@@ -21,7 +27,9 @@ from app.services.income_allocation_service import (
     ALLOCATION_STATUSES, ALLOCATION_TYPES, AVAILABILITY_CLASSES,
     RECONCILIATION_STATUSES as CONTRIBUTION_RECONCILIATION_STATUSES,
     SOURCE_TYPES, ad_hoc_contribution_candidates, contribution_occurrences,
+    validate_allocation_totals,
 )
+from app.services.contribution_reconciliation_service import add_match, refresh_reconciliation
 
 bp = Blueprint("forecast", __name__)
 
@@ -384,6 +392,7 @@ def save_income_allocation(schedule_id, allocation_id=None):
         allocation.frequency = frequency
         allocation.status = status; allocation.source_type = source_type
         schedule.availability_classification = availability
+        validate_allocation_totals(schedule, allocation)
         db.session.add(allocation); db.session.commit(); flash("Income allocation saved without changing total expected pay.", "success")
     except ValueError as exc:
         db.session.rollback(); flash(str(exc), "error")
@@ -406,10 +415,83 @@ def review_contribution_reconciliation():
         if status not in CONTRIBUTION_RECONCILIATION_STATUSES: raise ValueError("Select a valid contribution status.")
         row = ContributionReconciliation.query.filter_by(income_allocation_id=allocation.id, expected_date=expected_date).first() or ContributionReconciliation(income_allocation_id=allocation.id, expected_date=expected_date)
         row.expected_amount = parse_money(request.form.get("expected_amount"), non_negative=True)
-        row.status = status
-        row.matched_transaction_id = request.form.get("matched_transaction_id", type=int) if status in {"matched", "partially_matched"} else None
-        if status in {"matched", "partially_matched"} and not row.matched_transaction_id: raise ValueError("Select a proposed incoming transaction before confirming a match.")
-        row.reviewed_at = datetime.now(); db.session.add(row); db.session.commit(); flash("Household contribution status reviewed.", "success")
+        transaction_id = request.form.get("matched_transaction_id", type=int) if status in {"matched", "partially_matched"} else None
+        if status in {"matched", "partially_matched"} and not transaction_id: raise ValueError("Select a proposed incoming transaction before confirming a match.")
+        db.session.add(row); db.session.flush()
+        if transaction_id:
+            transaction = db.get_or_404(Transaction, transaction_id)
+            accepted_text = request.form.get("matched_amount", "").strip()
+            add_match(row, transaction, parse_money(accepted_text, non_negative=True) if accepted_text else transaction.amount)
+            row.matched_transaction_id = transaction.id  # legacy display compatibility
+        else:
+            row.status = status
+            refresh_reconciliation(row, date.today())
+        row.reviewed_at = datetime.now(); db.session.commit(); flash("Household contribution status reviewed.", "success")
     except ValueError as exc:
         db.session.rollback(); flash(str(exc), "error")
     return redirect(url_for("forecast.income_allocations"))
+
+
+@bp.route("/forecast-accuracy")
+def forecast_accuracy():
+    """Display persisted forecast comparisons without changing them."""
+    try:
+        period = resolve_period(request.args.get("period"), request.args.get("start_date"), request.args.get("end_date"))
+    except ValueError as exc:
+        flash(str(exc), "error")
+        period = resolve_period()
+    comparisons = ForecastComparison.query.filter(
+        ForecastComparison.forecast_date >= period.start_date,
+        ForecastComparison.forecast_date <= period.end_date,
+    ).order_by(ForecastComparison.forecast_date, ForecastComparison.id).all()
+    rows = [{
+        "category": row.category, "forecast_amount": Decimal(row.forecast_amount),
+        "actual_amount": Decimal(row.actual_amount) if row.actual_amount is not None else None,
+        "variance_amount": Decimal(row.variance_amount) if row.variance_amount is not None else None,
+        "variance_percentage": row.variance_percentage, "forecast_date": row.forecast_date,
+        "actual_date": row.actual_date, "date_variance": row.date_variance,
+        "match_status": row.match_status, "confidence": row.confidence,
+    } for row in comparisons]
+    if not rows:
+        summaries = HouseholdSpendingSummary.query.filter(
+            HouseholdSpendingSummary.period_start <= period.end_date,
+            HouseholdSpendingSummary.period_end >= period.start_date,
+        ).all()
+        for budget in VariableBudget.query.filter_by(active=True).all():
+            observed = [row for row in summaries if (budget.category_id and row.category_id == budget.category_id) or row.category_name.casefold() == budget.display_name.casefold()]
+            actual = sum((Decimal(row.reported_amount) for row in observed), Decimal("0.00")) if observed else None
+            comparison = compare_forecast_actual(str(budget.amount), str(actual) if actual is not None else None,
+                period.end_date, max((row.submitted_date for row in observed), default=None),
+                coverage="partial" if any(row.is_estimated for row in observed) else "complete", as_of=date.today())
+            rows.append({"category": budget.display_name, "confidence": "low" if not observed else "moderate" if any(row.is_estimated for row in observed) else "high", **comparison})
+    return render_template("forecast_accuracy.html", period=period, rows=rows, summary=accuracy_summary(rows))
+
+
+@bp.route("/household-spending-summaries", methods=["GET", "POST"])
+def household_spending_summaries():
+    """Display summaries on GET and save only an explicitly submitted POST."""
+    if request.method == "POST":
+        try:
+            create_summary(
+                db.session, period_start=_date_value("period_start"), period_end=_date_value("period_end"),
+                category_name=request.form.get("category_name", ""), amount=request.form.get("amount"),
+                is_estimated=request.form.get("is_estimated") == "on",
+                source_type=request.form.get("source_type", "manual_summary"),
+                confidence=request.form.get("confidence", "moderate"), note=request.form.get("note"),
+            )
+            db.session.commit()
+            flash("Household spending summary saved without creating a bank transaction.", "success")
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), "error")
+        return redirect(url_for("forecast.household_spending_summaries"))
+    try:
+        period = resolve_period(request.args.get("period"), request.args.get("start_date"), request.args.get("end_date"))
+    except ValueError as exc:
+        flash(str(exc), "error")
+        period = resolve_period()
+    return render_template(
+        "household_spending_summaries.html", period=period,
+        summaries=summaries_for_period(db.session, period.start_date, period.end_date),
+        source_types=SUMMARY_SOURCE_TYPES, confidence_values=CONFIDENCE_VALUES,
+    )
