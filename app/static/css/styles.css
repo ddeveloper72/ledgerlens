@@ -141,6 +141,27 @@ table tbody td {
     transform: translateY(-1px);
 }
 
+/* Keep checkbox controls and adjacent form actions distinct and touch-friendly. */
+form > label:has(> input[type="checkbox"]) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    margin-right: 1rem;
+    vertical-align: middle;
+}
+
+form > label:has(> input[type="checkbox"]) > input {
+    flex: 0 0 auto;
+}
+
+form > label:has(> input[type="checkbox"]) + .primary-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+}
+
 .file-input,
 .search-input {
     width: 100%;
@@ -284,4 +305,10 @@ table tbody td {
         grid-template-columns: 1fr;
     }
     .timeline-controls, .reconciliation-row { grid-template-columns: 1fr; }
+
+    form > label:has(> input[type="checkbox"]) + .primary-btn {
+        display: flex;
+        width: max-content;
+        margin-top: 0.75rem;
+    }
 }

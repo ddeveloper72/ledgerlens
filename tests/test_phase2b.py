@@ -235,6 +235,22 @@ def test_savings_event_history_calculates_recovery(app):
         assert summary["estimated_paydays"] == 3
 
 
+def test_ongoing_savings_has_no_artificial_recovery_gap(app):
+    with app.app_context():
+        goal = SavingsGoal(name="Example Credit Union Savings", target_amount=None,
+            current_amount=Decimal("500.00"), repayment_per_payday=Decimal("25.00"))
+        db.session.add(goal); db.session.flush()
+        add_recovery_event(db.session, goal, event_date=date(2026, 1, 1), amount=Decimal("100.00"),
+            event_type="withdrawal", reason="vehicle")
+        db.session.commit()
+        summary = savings_recovery_summary(db.session)
+        assert summary["current_amount"] == Decimal("400.00")
+        assert summary["has_target"] is False
+        assert summary["gap"] is None
+        assert summary["progress_percent"] is None
+        assert summary["estimated_paydays"] is None
+
+
 def test_completeness_warning_and_period_filter(app):
     with app.app_context():
         account = make_account()

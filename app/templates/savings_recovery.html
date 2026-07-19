@@ -1,10 +1,59 @@
 {% extends 'base.html' %}
-{% block title %}Savings Recovery | LedgerLens{% endblock %}
+{% block title %}Savings Activity | LedgerLens{% endblock %}
 {% block content %}
 <section class="grid gap-6 md:grid-cols-2" data-stagger>
-    <article class="panel"><h1 class="panel-title mb-2">Savings Recovery Plan</h1><p class="text-sm text-slate-600 mb-4">Set the original target and baseline. Later changes are recorded as events.</p><form action="{{ url_for('main.savings_recovery') }}" method="post" class="space-y-4"><input type="hidden" name="action" value="goal"><label class="block text-sm font-semibold">Plan Name</label><input name="goal_name" class="file-input" value="{{ recovery_snapshot.goal_name if recovery_snapshot else 'Emergency Fund' }}" required><label class="block text-sm font-semibold">Current Baseline</label><input name="current_amount" inputmode="decimal" class="file-input" value="{{ recovery_snapshot.goal.current_amount if recovery_snapshot else '0.00' }}" required><label class="block text-sm font-semibold">Original Target</label><input name="target_amount" inputmode="decimal" class="file-input" value="{{ recovery_snapshot.original_target if recovery_snapshot else '0.00' }}" required><label class="block text-sm font-semibold">Repayment per Payday (optional)</label><input name="repayment_per_payday" inputmode="decimal" class="file-input" value="{{ recovery_snapshot.repayment_per_payday or '' if recovery_snapshot else '' }}"><button type="submit" class="primary-btn">Save Plan</button></form></article>
-    <article class="panel"><h2 class="panel-title mb-4">Recovery Summary</h2>{% if recovery_snapshot %}<ul class="space-y-2 text-sm"><li class="summary-row"><span>Original target</span><span>{{ '%.2f'|format(recovery_snapshot.original_target) }}</span></li><li class="summary-row"><span>Current balance</span><span>{{ '%.2f'|format(recovery_snapshot.current_amount) }}</span></li><li class="summary-row"><span>Emergency withdrawals</span><span>{{ '%.2f'|format(recovery_snapshot.total_withdrawals) }}</span></li><li class="summary-row"><span>Total repaid</span><span>{{ '%.2f'|format(recovery_snapshot.total_repaid) }}</span></li><li class="summary-row"><span>Still to recover</span><span>{{ '%.2f'|format(recovery_snapshot.gap) }}</span></li><li class="summary-row"><span>Progress</span><span>{{ recovery_snapshot.progress_percent }}%</span></li><li class="summary-row"><span>Estimated paydays</span><span>{{ recovery_snapshot.estimated_paydays if recovery_snapshot.estimated_paydays is not none else 'Not set' }}</span></li></ul>{% else %}<p class="text-sm text-slate-500">Create a recovery plan first.</p>{% endif %}</article>
+  <article class="panel">
+    <h1 class="panel-title mb-2">Savings Account Plan</h1>
+    <p class="text-sm text-slate-600 mb-4">Track ongoing payroll savings and withdrawals. Add a target only if you have one.</p>
+    <form action="{{ url_for('main.savings_recovery') }}" method="post" class="space-y-4">
+      <input type="hidden" name="action" value="goal">
+      <label class="block text-sm font-semibold" for="goal-name">Plan or account name</label>
+      <input id="goal-name" name="goal_name" class="file-input" value="{{ recovery_snapshot.goal_name if recovery_snapshot else 'Savings Account' }}" required>
+      <label class="block text-sm font-semibold" for="current-amount">Current baseline</label>
+      <input id="current-amount" name="current_amount" inputmode="decimal" class="file-input" value="{{ recovery_snapshot.goal.current_amount if recovery_snapshot else '0.00' }}" required>
+      <p class="text-xs text-slate-500">The balance when tracking starts. Record later withdrawals and contributions as events.</p>
+      <label class="block text-sm font-semibold" for="target-amount">Target amount (optional)</label>
+      <input id="target-amount" name="target_amount" inputmode="decimal" class="file-input" value="{{ recovery_snapshot.original_target if recovery_snapshot and recovery_snapshot.has_target else '' }}">
+      <p class="text-xs text-slate-500">Leave blank for ongoing savings without a fixed target.</p>
+      <label class="block text-sm font-semibold" for="payday-contribution">Known contribution per payday (optional)</label>
+      <input id="payday-contribution" name="repayment_per_payday" inputmode="decimal" class="file-input" value="{{ recovery_snapshot.repayment_per_payday or '' if recovery_snapshot else '' }}">
+      <p class="text-xs text-slate-500">Use the amount deducted from pay at source; for example, a known fortnightly contribution.</p>
+      <button type="submit" class="primary-btn">Save savings plan</button>
+    </form>
+  </article>
+  <article class="panel">
+    <h2 class="panel-title mb-4">Savings Summary</h2>
+    {% if recovery_snapshot %}
+    <ul class="space-y-2 text-sm">
+      <li class="summary-row"><span>Current calculated balance</span><span>{{ '%.2f'|format(recovery_snapshot.current_amount) }}</span></li>
+      <li class="summary-row"><span>Recorded withdrawals</span><span>{{ '%.2f'|format(recovery_snapshot.total_withdrawals) }}</span></li>
+      <li class="summary-row"><span>Recorded contributions</span><span>{{ '%.2f'|format(recovery_snapshot.total_repaid) }}</span></li>
+      <li class="summary-row"><span>Known contribution per payday</span><span>{{ '%.2f'|format(recovery_snapshot.repayment_per_payday) if recovery_snapshot.repayment_per_payday is not none else 'Not set' }}</span></li>
+      {% if recovery_snapshot.has_target %}
+      <li class="summary-row"><span>Optional target</span><span>{{ '%.2f'|format(recovery_snapshot.original_target) }}</span></li>
+      <li class="summary-row"><span>Remaining to target</span><span>{{ '%.2f'|format(recovery_snapshot.gap) }}</span></li>
+      <li class="summary-row"><span>Progress</span><span>{{ recovery_snapshot.progress_percent }}%</span></li>
+      <li class="summary-row"><span>Estimated paydays</span><span>{{ recovery_snapshot.estimated_paydays if recovery_snapshot.estimated_paydays is not none else 'Not available' }}</span></li>
+      {% else %}
+      <li class="summary-row"><span>Plan type</span><span>Ongoing savings — no fixed target</span></li>
+      {% endif %}
+    </ul>
+    {% else %}<p class="text-sm text-slate-500">Create a savings plan first.</p>{% endif %}
+  </article>
 </section>
-{% if recovery_snapshot %}<section class="panel mt-8" data-fade-in><h2 class="panel-title mb-4">Add Recovery Event</h2><form action="{{ url_for('main.savings_recovery') }}" method="post" class="review-form-grid"><input type="hidden" name="action" value="event"><input type="hidden" name="goal_id" value="{{ recovery_snapshot.goal.id }}"><input type="date" name="event_date" class="file-input" required><select name="event_type" class="file-input"><option value="withdrawal">Withdrawal</option><option value="repayment">Repayment</option><option value="adjustment">Adjustment</option></select><input name="amount" inputmode="decimal" class="file-input" placeholder="Amount" required><select name="reason" class="file-input" required>{% for reason in reason_categories %}<option value="{{ reason }}">{{ reason|title }}</option>{% endfor %}</select><input name="note" class="file-input" placeholder="Optional note"><button type="submit" class="primary-btn">Add Event</button></form></section>
-<section class="panel mt-8" data-fade-in><h2 class="panel-title mb-4">Event History</h2><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Date</th><th>Type</th><th>Reason</th><th>Note</th><th class="text-right">Amount</th></tr></thead><tbody>{% for event in recovery_snapshot.events %}<tr><td>{{ event.event_date }}</td><td>{{ event.event_type }}</td><td>{{ event.reason }}</td><td>{{ event.note or '' }}</td><td class="text-right">{{ '%.2f'|format(event.amount) }}</td></tr>{% else %}<tr><td colspan="5" class="text-center py-6 text-slate-500">No recovery events yet.</td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
+{% if recovery_snapshot %}
+<section class="panel mt-8" data-fade-in>
+  <h2 class="panel-title mb-2">Record balance activity</h2>
+  <p class="text-sm text-slate-600 mb-4">Use Withdrawal for money transferred out and Contribution for money paid back or deducted from pay.</p>
+  <form action="{{ url_for('main.savings_recovery') }}" method="post" class="review-form-grid">
+    <input type="hidden" name="action" value="event"><input type="hidden" name="goal_id" value="{{ recovery_snapshot.goal.id }}">
+    <input type="date" name="event_date" class="file-input" required>
+    <select name="event_type" class="file-input"><option value="withdrawal">Withdrawal</option><option value="repayment">Contribution</option><option value="adjustment">Balance adjustment</option></select>
+    <input name="amount" inputmode="decimal" class="file-input" placeholder="Amount" required>
+    <select name="reason" class="file-input" required>{% for reason in reason_categories %}<option value="{{ reason }}">{{ reason|title }}</option>{% endfor %}</select>
+    <input name="note" class="file-input" placeholder="Optional generic note"><button type="submit" class="primary-btn">Add activity</button>
+  </form>
+</section>
+<section class="panel mt-8" data-fade-in><h2 class="panel-title mb-4">Activity history</h2><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Date</th><th>Type</th><th>Reason</th><th>Note</th><th class="text-right">Amount</th></tr></thead><tbody>{% for event in recovery_snapshot.events %}<tr><td>{{ event.event_date }}</td><td>{{ 'Contribution' if event.event_type == 'repayment' else event.event_type|title }}</td><td>{{ event.reason }}</td><td>{{ event.note or '' }}</td><td class="text-right">{{ '%.2f'|format(event.amount) }}</td></tr>{% else %}<tr><td colspan="5" class="text-center py-6 text-slate-500">No savings activity recorded yet.</td></tr>{% endfor %}</tbody></table></div></section>
+{% endif %}
 {% endblock %}

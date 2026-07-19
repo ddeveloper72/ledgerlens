@@ -178,7 +178,7 @@ class RecurringCandidate(db.Model):
 class SavingsGoal(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
-    target_amount = db.Column(db.Numeric(12, 2), nullable=False)
+    target_amount = db.Column(db.Numeric(12, 2), nullable=True)
     current_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     target_date = db.Column(db.Date, nullable=True)
     repayment_per_payday = db.Column(db.Numeric(12, 2), nullable=True)
@@ -298,7 +298,7 @@ class OneOffForecastEvent(db.Model):
 class SinkingFundProvision(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     display_name = db.Column(db.String(120), nullable=False)
-    target_amount = db.Column(db.Numeric(12, 2), nullable=False)
+    target_amount = db.Column(db.Numeric(12, 2), nullable=True)
     due_date = db.Column(db.Date, nullable=False)
     amount_reserved = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     savings_goal_id = db.Column(db.Integer, db.ForeignKey("savings_goal.id"), nullable=True)

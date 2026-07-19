@@ -428,11 +428,12 @@ def savings_recovery():
                 add_recovery_event(db.session, goal, event_date=date.fromisoformat(request.form.get("event_date", "")), amount=parse_money(request.form.get("amount"), non_negative=True), event_type=request.form.get("event_type", ""), reason=request.form.get("reason", "").strip() or "General", note=request.form.get("note"))
                 message = "Savings recovery event added."
             else:
-                target = parse_money(request.form.get("target_amount"), non_negative=True)
+                target_text = request.form.get("target_amount", "").strip()
+                target = parse_money(target_text, non_negative=True) if target_text else None
                 baseline = parse_money(request.form.get("current_amount"), non_negative=True)
                 repayment_text = request.form.get("repayment_per_payday", "").strip()
                 repayment = parse_money(repayment_text, non_negative=True) if repayment_text else None
-                goal = SavingsGoal.query.filter(SavingsGoal.name.ilike("%emergency%")).first()
+                goal = SavingsGoal.query.order_by(SavingsGoal.id).first()
                 if not goal:
                     goal = SavingsGoal(name="Emergency Fund", target_amount=target, current_amount=baseline)
                     db.session.add(goal)

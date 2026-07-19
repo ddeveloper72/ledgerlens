@@ -189,10 +189,14 @@
             <li class="summary-row"><span>Goal</span><span>{{ recovery_snapshot.goal_name }}</span></li>
             <li class="summary-row"><span>Current</span><span>{{ '%.2f'|format(recovery_snapshot.current_amount)
                     }}</span></li>
-            <li class="summary-row"><span>Target</span><span>{{ '%.2f'|format(recovery_snapshot.target_amount) }}</span>
-            </li>
+            {% if recovery_snapshot.has_target %}
+            <li class="summary-row"><span>Target</span><span>{{ '%.2f'|format(recovery_snapshot.target_amount) }}</span></li>
             <li class="summary-row"><span>Gap</span><span>{{ '%.2f'|format(recovery_snapshot.gap) }}</span></li>
             <li class="summary-row"><span>Progress</span><span>{{ recovery_snapshot.progress_percent }}%</span></li>
+            {% else %}
+            <li class="summary-row"><span>Plan</span><span>Ongoing savings — no fixed target</span></li>
+            <li class="summary-row"><span>Per payday</span><span>{{ '%.2f'|format(recovery_snapshot.repayment_per_payday) if recovery_snapshot.repayment_per_payday is not none else 'Not set' }}</span></li>
+            {% endif %}
         </ul>
         {% else %}
         <p class="text-sm text-slate-500">No emergency recovery goal exists yet.</p>

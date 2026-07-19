@@ -24,7 +24,7 @@ def add_recovery_event(session, goal, *, event_date, amount, event_type, reason,
 
 def savings_recovery_summary(session):
     """Calculate current recovery position from the goal baseline plus event history."""
-    goal = session.query(SavingsGoal).filter(SavingsGoal.name.ilike("%emergency%")).order_by(SavingsGoal.id).first()
+    goal = session.query(SavingsGoal).order_by(SavingsGoal.id).first()
     if not goal:
         return None
     withdrawals = repayments = adjustments = Decimal("0")
@@ -34,16 +34,17 @@ def savings_recovery_summary(session):
         if event.event_type == "withdrawal": withdrawals += amount
         elif event.event_type == "repayment": repayments += amount
         else: adjustments += amount
-    original_target = Decimal(goal.target_amount)
+    original_target = Decimal(goal.target_amount) if goal.target_amount is not None else None
     current = Decimal(goal.current_amount) - withdrawals + repayments + adjustments
-    gap = max(original_target - current, Decimal("0"))
-    progress = ((current / original_target) * 100).quantize(Decimal("0.01")) if original_target > 0 else Decimal("0")
+    gap = max(original_target - current, Decimal("0")) if original_target is not None else None
+    progress = ((current / original_target) * 100).quantize(Decimal("0.01")) if original_target and original_target > 0 else None
     per_payday = Decimal(goal.repayment_per_payday) if goal.repayment_per_payday else None
-    paydays = int((gap / per_payday).to_integral_value(rounding=ROUND_CEILING)) if per_payday and per_payday > 0 else None
+    paydays = int((gap / per_payday).to_integral_value(rounding=ROUND_CEILING)) if gap is not None and per_payday and per_payday > 0 else None
     return {
         "goal": goal, "goal_name": goal.name, "original_target": original_target,
         "target_amount": original_target, "current_amount": current, "total_withdrawals": withdrawals,
         "total_repaid": repayments, "gap": gap, "progress_percent": progress,
         "target_date": goal.target_date, "repayment_per_payday": per_payday,
-        "estimated_paydays": paydays, "events": events,
+        "estimated_paydays": paydays, "events": events, "has_target": original_target is not None,
+        "plan_type": "target_recovery" if original_target is not None else "ongoing_savings",
     }

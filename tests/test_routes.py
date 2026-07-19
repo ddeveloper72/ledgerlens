@@ -488,6 +488,18 @@ def test_savings_recovery_route_saves_goal(client, app):
         assert str(goal.target_amount) == "1000.00"
 
 
+def test_savings_plan_allows_known_payroll_contribution_without_target(client, app):
+    response = client.post("/savings-recovery", data={"goal_name": "Example Credit Union Savings",
+        "current_amount": "250.00", "target_amount": "", "repayment_per_payday": "25.00"},
+        follow_redirects=True)
+    assert response.status_code == 200
+    assert "Ongoing savings" in response.get_data(as_text=True)
+    with app.app_context():
+        goal = SavingsGoal.query.one()
+        assert goal.target_amount is None
+        assert goal.repayment_per_payday == Decimal("25.00")
+
+
 def test_forecast_accuracy_get_is_read_only_and_filters_period(client, app):
     with app.app_context():
         db.session.add(ForecastComparison(category="Example category", forecast_amount=Decimal("50.00"), actual_amount=Decimal("55.00"), variance_amount=Decimal("5.00"), variance_percentage=Decimal("10.00"), forecast_date=date.today(), actual_date=date.today(), date_variance=0, match_status="over_forecast", confidence="high"))
