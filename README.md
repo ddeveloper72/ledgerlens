@@ -44,6 +44,15 @@ copy .env.example .env
 flask --app run.py db upgrade
 ```
 
+When a deliberate model change requires a new revision, generate and review it before upgrading:
+
+```bash
+flask --app run.py db migrate -m "Add forecast calibration support"
+flask --app run.py db upgrade
+```
+
+Never delete or recreate the development database as a substitute for a migration. Test upgrades against an empty temporary database and, where practical, a database at the preceding schema.
+
 5. Start the app:
 
 ```bash
@@ -161,12 +170,14 @@ Review
   ↓
 Enrich
   ↓
-Analyse
+Forecast
   ↓
-Advise (not yet implemented)
+Calibrate
+  ↓
+Guide
 ```
 
-The advisory layer is intentionally not implemented. Current outputs are user-reviewed records, observations, estimates, and explainable calculations—not regulated financial advice.
+Guidance is deterministic and tied to visible evidence. It uses cautious wording and is not regulated financial advice.
 
 ## Current Limitations
 
@@ -175,6 +186,9 @@ The advisory layer is intentionally not implemented. Current outputs are user-re
 - Recurrence detection needs sufficient history and remains a suggestion until confirmed.
 - Completeness checks can identify likely coverage gaps but cannot prove that every statement has been imported.
 - Forecasts depend on user-maintained schedules and are estimates rather than guarantees.
+- Forecast accuracy is limited when household accounts or spending periods are missing, stale, or represented only by estimates.
+- Category summaries improve household coverage without exposing private purchases, but they cannot reproduce transaction-level timing.
+- Calibration suggestions depend on sufficient comparable history and never guarantee future outcomes.
 
 ## Changing Payment References
 
@@ -202,6 +216,12 @@ Forecast and sinking-fund values are estimates for planning, not definitive fina
 
 ## Daily Financial Health
 
+Recurring direct-debit dates that fall on a weekend or Republic of Ireland public
+holiday are moved to the next Irish working day. They remain expected through that
+processing date and become overdue only on the following day if no payment is
+observed or reviewed. This is a forecasting convention and individual bank
+processing practices may differ.
+
 The Daily Health page provides a date-selectable, read-only calculation of actual activity and upcoming forecast events. It includes:
 
 - Previous/next day, today, next-payday, end-of-month, 30-day, and 90-day views.
@@ -215,6 +235,16 @@ The Daily Health page provides a date-selectable, read-only calculation of actua
 
 Daily financial-health results are calculations rather than persisted transactions. Recommendations are household cash-planning suggestions, not regulated investment, pension, insurance, or credit advice.
 
+The balance label changes with the selected date. Today uses the latest imported or manually confirmed balance and its information date. Historical dates are labelled **Actual** when supported directly or **Reconstructed** when derived from imported transactions. Future dates are always labelled **Forecast**; estimated inputs remain visibly labelled **Estimated**.
+
+Daily Health separates three intervention thresholds:
+
+- **Prevent failed payments** is the additional amount needed to keep essential commitments within cash plus any authorised overdraft.
+- **Avoid overdraft use** is the amount needed to keep projected cash at or above zero.
+- **Preserve the safety buffer** is the amount needed to keep projected cash at or above the configured preferred buffer.
+
+A zero amount is shown explicitly. The highest threshold is not presented as though it were the only amount required.
+
 ## Household Income Allocation
 
 Income schedules preserve total expected pay for reporting, while available-cash forecasts use only explicit household-contribution allocations. Each allocation can use a fixed amount or percentage, a destination household account, effective dates, and an estimated, confirmed, actual, or inactive status.
@@ -223,9 +253,27 @@ Availability classifications distinguish fully available, contribution-only, sum
 
 Contribution matching is reviewable. LedgerLens can propose a matching incoming transaction within the destination account, but the user must explicitly confirm matched, partially matched, overdue, skipped, or cancelled status. A received contribution is reflected through the actual account transaction and is not added again as expected income.
 
+Reconciliation keeps the expected amount distinct from the accepted matched amount. The outstanding amount is `max(expected amount - matched amount, 0)`. A partial receipt remains **Partially matched** and outstanding rather than being treated as fully funded; overpayments do not create a negative outstanding amount.
+
 An income schedule and its contribution may have different timing. Choose **Ad hoc / irregular** when household top-ups respond to immediate need rather than following payday. Leave the amount and percentage blank for an actual-only allocation: LedgerLens assumes no future top-up and offers unmatched incoming destination-account transactions for explicit contribution review.
 
 Estimated variable budgets continue to represent shared costs paid through accounts that are not imported. Private spending is not subtracted merely because personal income remains outside the household allocation.
+
+The core forecasting rule is: **Total income may be reported, but only money explicitly allocated to the household budget may improve the household cash-flow forecast.**
+
+## Household Spending Summaries and Calibration
+
+When a household spending account is not imported, category totals can be recorded for an inclusive reporting period without creating fake bank transactions or exposing private purchases. Each summary remains distinguishable by source (`manual_summary`, statement import, transaction import, estimated, or calculated), whether its amount is exact or estimated, and its confidence level.
+
+Forecast calibration compares forecast events with observed outcomes for contributions, bills, variable household categories, savings recovery, one-off events, and balance minima or closings. Missing personal-account data is not treated as zero spending: results use statuses such as **Partially observed**, **Not observed**, or **Insufficient data**. Forecast Accuracy supports current month, previous month, last three months, year to date, and custom inclusive date ranges.
+
+Budget calibration can compare a manual estimate with recent averages, medians, and rolling-period results. It presents a suggestion for explicit acceptance, editing, retention, or dismissal; a GET request never changes a budget. Important assumption changes retain the previous value, new value, effective date, source, reason, and timestamp.
+
+## Forecast Confidence and Guidance
+
+Forecast confidence is based on weighted coverage signals such as balance and import freshness, represented household accounts, reviewed and categorised transactions, allocation and reconciliation completeness, bill and variable-spending coverage, estimated inputs, and available historical accuracy. A displayed percentage is an **estimated coverage indicator**, not a scientific probability. The page also explains component scores, specific reasons, and useful data actions.
+
+Rule-based recommendations include severity, explanation, evidence, applicable dates, suggested action, affected account or category, and confidence. They describe contribution shortfalls, payment-failure risk, overdraft use, safety-buffer pressure, stale information, estimate calibration, and annual provisions using wording such as “Consider” and “The forecast suggests.” LedgerLens does not provide regulated investment, pension, insurance, mortgage, tax, debt, or credit advice.
 
 ## Balance Snapshots and Overdrafts
 
